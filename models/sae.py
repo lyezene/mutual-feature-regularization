@@ -30,12 +30,12 @@ class SparseAutoencoder(nn.Module):
             nn.init.zeros_(m.bias)
 
     def forward(self, x):
-        features = []
+        hidden_states = []
         reconstructions = []
 
         for encoder in self.encoders:
             encoded = F.relu(encoder(x))
-            features.append(encoded)
+            hidden_states.append(encoded)
 
             normalized_weights = F.normalize(encoder.weight, p=2, dim=1)
             decoded = F.linear(encoded, normalized_weights.t())
@@ -44,13 +44,13 @@ class SparseAutoencoder(nn.Module):
         if self.config.get("ar", False):
             ar_property = self.config.get("property", "x_hat")
             additional_output = (
-                features
+                hidden_states
                 if ar_property == "hid"
                 else [encoder.weight for encoder in self.encoders]
             )
-            return features, reconstructions, additional_output
+            return hidden_states, reconstructions, additional_output
 
-        return features, reconstructions
+        return hidden_states, reconstructions
 
     def save_model(self, save_dir: str, prefix: str = "sae"):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -67,7 +67,7 @@ class SparseAutoencoder(nn.Module):
 
 
 class SAETrainer:
-    def __init__(self, model, hyperparameters, Fe, device=get_device()):
+    def __init__(self, model, hyperparameters, true_features, device=get_device()):
         self.model = model.to(device)
         self.device = device
         self.config = hyperparameters
@@ -75,7 +75,7 @@ class SAETrainer:
             model.parameters(), lr=self.config["learning_rate"]
         )
         self.criterion = torch.nn.MSELoss()
-        self.Fe = Fe
+        self.true_features = true_features
 
     def calculate_ar_loss(self, items):
         ar_loss = 0.0
@@ -95,43 +95,43 @@ class SAETrainer:
         return self.config["beta"] * ar_loss
 
     def train(self, train_loader, num_epochs):
-        losses, mmcs_scores, sim_matrices = [], [], []
+        losses, mmcs_scores, cos_sim_matrices = [], [], []
         for epoch in range(num_epochs):
             total_loss = 0
             for (X_batch,) in train_loader:
                 X_batch = X_batch.to(self.device)
                 self.optimizer.zero_grad()
-                features, reconstructions, *ar_items = self.model(X_batch)
+                hidden_states, reconstructions, *ar_items = self.model(X_batch)
                 ar_loss = self.calculate_ar_loss(ar_items[0]) if ar_items else 0
-                for idx, (feature, reconstruction) in enumerate(
-                    zip(features, reconstructions)
+                for idx, (hidden_state, reconstruction) in enumerate(
+                    zip(hidden_states, reconstructions)
                 ):
                     l2_loss = self.criterion(reconstruction, X_batch)
-                    l1_loss = feature.norm(p=1, dim=1).mean() * self.config["l1_coef"]
+                    l1_loss = hidden_state.norm(p=1, dim=1).mean() * self.config["l1_coef"]
                     loss = l2_loss + ar_loss + l1_loss
                     loss.backward(
-                        retain_graph=True if idx < len(features) - 1 else False
+                        retain_graph=True if idx < len(hidden_states) - 1 else False
                     )
                     total_loss += loss.item()
 
                 self.optimizer.step()
 
-            mmcs, sim_matrix = zip(
+            mmcs, cos_sim_matrix = zip(
                 *[
-                    calculate_MMCS(encoder.weight.detach().t(), self.Fe, self.device)
+                    calculate_MMCS(encoder.weight.detach().t(), self.true_features, self.device)
                     for encoder in self.model.encoders
                 ]
             )
             losses.append(total_loss / len(train_loader))
             mmcs_scores.append(mmcs)
-            sim_matrices.append(sim_matrix)
+            cos_sim_matrices.append(cos_sim_matrix)
 
             print(
                 f"Epoch {epoch + 1}: Loss = {total_loss / len(train_loader)}, L2: {l2_loss}, L1: {l1_loss}, MMCS Scores = {mmcs}, AR Loss = {ar_loss}"
             )
 
         self.save_model()
-        return losses, mmcs_scores, sim_matrices
+        return losses, mmcs_scores, cos_sim_matrices
 
     def save_model(self):
         """Saves the model using the specified prefix."""

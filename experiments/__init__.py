@@ -1,1 +1,1 @@
-from .synthetic_task import generate_toy_data, train_synthetic_sae
+from .synthetic_task import generate_synthetic_data, train_synthetic_sae

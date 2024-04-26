@@ -38,11 +38,12 @@ def reconstruct(activations, autoencoders, device=get_device()):
     return reconstructed_activations_list
 
 
-def get_feature_dict(gpt4_helper, data):
+def get_feature_explanations(gpt4_helper, data):
     feature_dict = defaultdict(dict)
     for processed_activations, tokens in data:
         for layer_num, layer_activations in enumerate(processed_activations):
-            num_features = layer_activations[0].shape[0]
+            #num_features = layer_activations[0].shape[0]
+            num_features = 1
             for feature_index in range(num_features):
                 feature_activations = [
                     seq_activations[feature_index]
@@ -70,8 +71,8 @@ def get_feature_dict(gpt4_helper, data):
     return feature_dict
 
 
-def predict_and_evaluate(gpt4_helper, feature_explanations, all_data):
-    rho_scores = defaultdict(lambda: defaultdict(list))
+def evaluate_feature_explanations(gpt4_helper, feature_explanations, all_data):
+    correlation_scores = defaultdict(lambda: defaultdict(list))
 
     for layer_num, features in feature_explanations.items():
         for feature_index, description in features.items():
@@ -104,16 +105,16 @@ def predict_and_evaluate(gpt4_helper, feature_explanations, all_data):
                 and predicted_activations_list
                 and len(true_activations_list) == len(predicted_activations_list)
             ):
-                rho, _ = scipy.stats.pearsonr(
+                correlation_score, _ = scipy.stats.pearsonr(
                     true_activations_list, predicted_activations_list
                 )
-                rho_scores[layer_num][feature_index].append(rho)
+                correlation_scores[layer_num][feature_index].append(correlation_score)
 
-    averaged_rho_scores = {
+    averaged_correlation_scores = {
         layer: {
-            feature: np.mean(rhos) if rhos else None
-            for feature, rhos in features.items()
+            feature: np.mean(correlation_scores) if correlation_scores else None
+            for feature, correlation_scores in features.items()
         }
-        for layer, features in rho_scores.items()
+        for layer, features in correlation_scores.items()
     }
-    return averaged_rho_scores
+    return averaged_correlation_scores

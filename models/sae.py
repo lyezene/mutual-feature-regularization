@@ -5,6 +5,8 @@ from config import get_device
 from utils.general_utils import calculate_MMCS
 from datetime import datetime
 import os
+from tqdm import tqdm
+
 
 class SparseAutoencoder(nn.Module):
     def __init__(self, hyperparameters):
@@ -67,7 +69,7 @@ class SparseAutoencoder(nn.Module):
 
 
 class SAETrainer:
-    def __init__(self, model, hyperparameters, true_features, device=get_device()):
+    def __init__(self, model, hyperparameters, true_features=None, device=get_device()):
         self.model = model.to(device)
         self.device = device
         self.config = hyperparameters
@@ -97,38 +99,45 @@ class SAETrainer:
     def train(self, train_loader, num_epochs):
         losses, mmcs_scores, cos_sim_matrices = [], [], []
         for epoch in range(num_epochs):
-            total_loss = 0
-            for (X_batch,) in train_loader:
+            epoch_loss = 0
+            progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs}", leave=True)
+            for (X_batch,) in progress_bar:
                 X_batch = X_batch.to(self.device)
                 self.optimizer.zero_grad()
                 hidden_states, reconstructions, *ar_items = self.model(X_batch)
                 ar_loss = self.calculate_ar_loss(ar_items[0]) if ar_items else 0
-                for idx, (hidden_state, reconstruction) in enumerate(
-                    zip(hidden_states, reconstructions)
-                ):
+
+                for idx, (hidden_state, reconstruction) in enumerate(zip(hidden_states, reconstructions)):
                     l2_loss = self.criterion(reconstruction, X_batch)
                     l1_loss = hidden_state.norm(p=1, dim=1).mean() * self.config["l1_coef"]
                     loss = l2_loss + ar_loss + l1_loss
-                    loss.backward(
-                        retain_graph=True if idx < len(hidden_states) - 1 else False
-                    )
-                    total_loss += loss.item()
+                    loss.backward(retain_graph=True if idx < len(hidden_states) - 1 else False)
+                    epoch_loss += loss.item()
 
                 self.optimizer.step()
 
-            mmcs, cos_sim_matrix = zip(
-                *[
+                progress_bar.set_postfix({
+                    'L2 Loss': f"{l2_loss:.4f}",
+                    'L1 Loss': f"{l1_loss:.4f}",
+                    'AR Loss': f"{ar_loss:.4f}"
+                })
+
+            if self.true_features is not None:
+                mmcs, cos_sim_matrix = zip(*[
                     calculate_MMCS(encoder.weight.detach().t(), self.true_features, self.device)
                     for encoder in self.model.encoders
-                ]
-            )
-            losses.append(total_loss / len(train_loader))
-            mmcs_scores.append(mmcs)
-            cos_sim_matrices.append(cos_sim_matrix)
+                ])
+                mmcs_scores.append(mmcs)
+                cos_sim_matrices.append(cos_sim_matrix)
+                progress_bar.set_postfix({
+                    'L2 Loss': f"{l2_loss:.4f}",
+                    'L1 Loss': f"{l1_loss:.4f}",
+                    'AR Loss': f"{ar_loss:.4f}",
+                    'MMCS': f"{mmcs}"
+                })
 
-            print(
-                f"Epoch {epoch + 1}: Loss = {total_loss / len(train_loader)}, L2: {l2_loss}, L1: {l1_loss}, MMCS Scores = {mmcs}, AR Loss = {ar_loss}"
-            )
+            losses.append(epoch_loss / len(train_loader))
+            progress_bar.close()
 
         self.save_model()
         return losses, mmcs_scores, cos_sim_matrices

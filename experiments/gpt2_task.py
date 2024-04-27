@@ -4,6 +4,7 @@ from utils.gpt4_utils import GPT4Helper
 import yaml
 import numpy as np
 
+
 def convert_numpy_scalars(obj):
     if isinstance(obj, dict):
         return {k: convert_numpy_scalars(v) for k, v in obj.items()}

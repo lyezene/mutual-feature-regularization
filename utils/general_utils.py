@@ -1,5 +1,6 @@
 import torch
 
+
 def calculate_MMCS(learned_features, true_features, device):
     if not isinstance(true_features, torch.Tensor):
         true_features = torch.tensor(true_features, dtype=torch.float32)

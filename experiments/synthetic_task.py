@@ -1,22 +1,8 @@
 import torch
-from models.sae import SparseAutoencoder, SAETrainer
 from config import get_device
 from data.synthetic_dataset import generate_synthetic_data
 import itertools
-
-def train_synthetic_sae(params, true_features, train_loader):
-    model = SparseAutoencoder(params)
-    trainer = SAETrainer(model, params, true_features)
-    losses, mmcs_scores, cos_sim_matrices = trainer.train(
-        train_loader, params["num_epochs"]
-    )
-    return losses, mmcs_scores, cos_sim_matrices
-
-
-def find_combinations(grid):
-    keys, values = zip(*grid.items())
-    for v in itertools.product(*values):
-        yield dict(zip(keys, v))
+from utils.synthetic_utils import find_combinations, train_synthetic_sae
 
 
 def run(device, config):
@@ -24,7 +10,7 @@ def run(device, config):
     num_true_features = config.get('num_ground_features', 512)
     total_data_points = config.get('total_data_points', 1000)
     num_active_features_per_point = config.get('num_active_features_per_point', 42)
-    batch_size = config.get('batch_size', 100)
+    batch_size = config.get('data_batch_size', 100)
 
     generated_data, true_features = generate_synthetic_data(
         num_features,
@@ -37,7 +23,7 @@ def run(device, config):
 
     train_dataset = torch.utils.data.TensorDataset(generated_data)
     torch.save(train_dataset, 'synthetic_dataset.pth')
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=2048, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.get('training_batch_size'), shuffle=True)
 
     parameter_grid = {
         'learning_rate': config['learning_rate'],

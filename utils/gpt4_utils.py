@@ -1,5 +1,6 @@
 from openai import OpenAI
 
+
 class GPT4Helper:
     def __init__(self, api_key):
         self.client = OpenAI(api_key=api_key)

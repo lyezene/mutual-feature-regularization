@@ -1,3 +1,7 @@
+import matplotlib as plt
+import seaborn as sns
+
+
 class GraphingHelper:
     def __init__(self):
         pass

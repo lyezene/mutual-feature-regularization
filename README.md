@@ -24,3 +24,10 @@ In this experiment we train a transformer to predict time series data as denoise
 ```
 python main.py --config configs/eeg_config.yaml
 ```
+
+## SAE Training on GPT-2 Activations
+
+This experient trains an SAE (both with or without AR) on the activations of GPT2-Small (and should generalize to all GPT-2 series models). It also includes code for creating a dataset of activations (MLP outputs by default). This experiment can be run with the command:
+```
+python main.py --config configs/gpt2_sae_config.yaml
+```

@@ -3,6 +3,7 @@ import numpy as np
 from mne.io import read_raw_edf
 from mne.datasets import eegbci
 
+
 def load_eeg_data(subjects, runs, interval):
     '''
     Placeholder function that works for a toy dataset

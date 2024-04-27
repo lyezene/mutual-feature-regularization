@@ -8,6 +8,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from config import get_device
 
+
 def train(model, dataloader, criterion, optimizer, scheduler, config, device):
     best_loss = float("inf")
     early_stop_counter = 0

@@ -1,7 +1,8 @@
 from config import get_device
-from experiments import synthetic_task, gpt2_task, eeg_task
+from experiments import synthetic_task, gpt2_task, eeg_task, gpt2_sae
 import argparse
 import yaml
+
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
@@ -21,6 +22,9 @@ def main(config):
     elif config['experiment'] == 'eeg':
         print("Running EEG Experiment...")
         eeg_task.run(device, config)
+    elif config['experiment'] == 'gpt2-sae':
+        print("Training GPT-2 SAE...")
+        gpt2_sae.run(device, config)
     else:
         print("Invalid experiment name. Choose from 'synthetic', 'gpt2', or 'eeg'.")
 

@@ -5,6 +5,9 @@ from utils.gpt4_utils import GPT4Helper
 from collections import defaultdict
 from random import sample
 import scipy.stats
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+
 
 def stream_data(n=10):
     dataset = load_dataset("HuggingFaceFW/fineweb", split='train', streaming=True)
@@ -49,10 +52,19 @@ def get_feature_explanations(gpt4_helper, data):
                     seq_activations[feature_index]
                     for seq_activations in layer_activations
                 ]
-                summed_activation = sum(feature_activations)
-                feature_dict[layer_num].setdefault(feature_index, []).append(
-                    (summed_activation, tokens, feature_activations)
+
+                non_zero_activations = [act for act in feature_activations if act != 0]
+                sparsity = (
+                    len(non_zero_activations) / len(feature_activations)
+                    if feature_activations
+                    else 0
                 )
+
+                if sparsity < 0.2:
+                    summed_activation = sum(non_zero_activations)
+                    feature_dict[layer_num].setdefault(feature_index, []).append(
+                        (summed_activation, tokens, feature_activations)
+                    )
 
     for layer_num, features in feature_dict.items():
         for feature_index, activations_list in features.items():
@@ -65,9 +77,11 @@ def get_feature_explanations(gpt4_helper, data):
                 for token, act in zip(seq_tokens, feature_activations)
             )
 
-            feature_dict[layer_num][feature_index] = gpt4_helper.explain_feature(
+            explanation = gpt4_helper.explain_feature(
                 feature_index, formatted_activations
             )
+            feature_dict[layer_num][feature_index] = explanation
+
     return feature_dict
 
 
@@ -118,3 +132,26 @@ def evaluate_feature_explanations(gpt4_helper, feature_explanations, all_data):
         for layer, features in correlation_scores.items()
     }
     return averaged_correlation_scores
+
+
+def train_gpt2_sae(activations, device, config):
+    from models.sae import SparseAutoencoder, SAETrainer
+
+    activations_tensor = torch.tensor(activations, dtype=torch.float32).to(device)
+    dataset = TensorDataset(activations_tensor)
+    train_loader = DataLoader(dataset, batch_size=config["training_batch_size"], shuffle=True)
+
+    sae_hyperparameters = {
+        'input_size': config['input_size'],
+        'hidden_size': config['hidden_size'],
+        'learning_rate': config['learning_rate'],
+        'l1_coef': config['l1_coef'],
+        'ar': config['ar'],
+        'beta': config['beta'],
+        'num_saes': config['num_saes'],
+        'property': config['property'],
+    }
+
+    sae_model = SparseAutoencoder(sae_hyperparameters).to(device)
+    sae_trainer = SAETrainer(sae_model, sae_hyperparameters, device=device)
+    sae_trainer.train(train_loader, config["epochs"])

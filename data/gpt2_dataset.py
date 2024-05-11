@@ -1,6 +1,7 @@
 from transformers import GPT2Tokenizer, GPT2Model
 import torch
 
+
 class GPT2ActivationDataset:
     def __init__(self, model_name, device):
         self.tokenizer = GPT2Tokenizer.from_pretrained(model_name)

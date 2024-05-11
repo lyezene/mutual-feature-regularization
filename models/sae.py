@@ -6,6 +6,7 @@ from utils.general_utils import calculate_MMCS
 from datetime import datetime
 import os
 from tqdm import tqdm
+import wandb
 
 
 class SparseAutoencoder(nn.Module):
@@ -54,18 +55,22 @@ class SparseAutoencoder(nn.Module):
 
         return hidden_states, reconstructions
 
-    def save_model(self, save_dir: str, prefix: str = "sae"):
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        save_path = os.path.join(save_dir, f"{prefix}_{timestamp}.pth")
-        torch.save(self.state_dict(), save_path)
-        print(f"Model saved to {save_path}")
+    def save_model(self, run_name: str, alias: str="latest"):
+        artifact = wandb.Artifact(run_name, type='model')
+        artifact.add_file(self.state_dict(), f'{run_name}.pth')
+        wandb.log_artifact(artifact, aliases=[alias])
+        print(f"Model checkpoint '{alias}' saved as wandb artifact under {run_name}")
 
     @classmethod
-    def load_from_pretrained(cls, load_path: str, hyperparameters, device="cpu"):
-        model = cls(hyperparameters)
-        model.load_state_dict(torch.load(load_path, map_location=device))
-        model.to(device)
-        return model
+    def load_from_pretrained(cls, artifact_path: str, hyperparameters, device="cpu"):
+        with wandb.init() as run:
+            artifact = run.use_artifact(artifact_path, type='model')
+            artifact_dir = artifact.download()
+            model_path = os.path.join(artifact_dir, f"{artifact_path.split(':')[-1]}.pth")
+            model = cls(hyperparameters)
+            model.load_state_dict(torch.load(model_path, map_location=device))
+            model.to(device)
+            return model
 
 
 class SAETrainer:
@@ -138,11 +143,11 @@ class SAETrainer:
 
             losses.append(epoch_loss / len(train_loader))
             progress_bar.close()
+            wandb.log({"loss": epoch_loss, "L2_loss": l2_loss, "L1_loss": l1_loss, "AR_loss": ar_loss})
 
         self.save_model()
         return losses, mmcs_scores, cos_sim_matrices
 
     def save_model(self):
-        """Saves the model using the specified prefix."""
         prefix = ""
         self.model.save_model(prefix)

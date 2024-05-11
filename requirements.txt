@@ -14,3 +14,4 @@ torch==2.3.0
 tqdm==4.66.2
 transformers==4.40.1
 vastai==0.2.2
+wandb==0.16.6

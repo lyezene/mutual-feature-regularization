@@ -3,27 +3,21 @@ from config import get_device
 from data.synthetic_dataset import generate_synthetic_data
 import itertools
 from utils.synthetic_utils import find_combinations, train_synthetic_sae
+from utils.data_utils import generate_synthetic_dataset
+import wandb
+from torch.utils.data import DataLoader
 
 
 def run(device, config):
-    num_features = config.get('num_features', 256)
-    num_true_features = config.get('num_ground_features', 512)
-    total_data_points = config.get('total_data_points', 1000)
-    num_active_features_per_point = config.get('num_active_features_per_point', 42)
-    batch_size = config.get('data_batch_size', 100)
+    artifact = wandb.use_artifact('synthetic_dataset:latest', type='dataset')
+    artifact_dir = artifact.download()
+    dataset_path = artifact_dir + '/synthetic_dataset.pth'
+    
+    train_dataset = torch.load(dataset_path)
+    train_loader = DataLoader(train_dataset, batch_size=config.get('training_batch_size'), shuffle=True)
 
-    generated_data, true_features = generate_synthetic_data(
-        num_features,
-        num_true_features,
-        total_data_points,
-        num_active_features_per_point,
-        batch_size,
-        device=device
-    )
-
-    train_dataset = torch.utils.data.TensorDataset(generated_data)
-    torch.save(train_dataset, 'synthetic_dataset.pth')
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.get('training_batch_size'), shuffle=True)
+    true_features_path = artifact_dir + '/true_features.pth'
+    true_features = torch.load(true_features_path)
 
     parameter_grid = {
         'learning_rate': config['learning_rate'],

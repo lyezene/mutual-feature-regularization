@@ -106,7 +106,7 @@ class SAETrainer:
         for epoch in range(num_epochs):
             epoch_loss = 0
             progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs}", leave=True)
-            for (X_batch,) in progress_bar:
+            for X_batch in progress_bar:
                 X_batch = X_batch.to(self.device)
                 self.optimizer.zero_grad()
                 hidden_states, reconstructions, *ar_items = self.model(X_batch)
@@ -151,3 +151,4 @@ class SAETrainer:
     def save_model(self):
         prefix = ""
         self.model.save_model(prefix)
+

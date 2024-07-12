@@ -4,6 +4,7 @@ import wandb
 from config import get_device
 from experiments import synthetic_task, gpt2_task, eeg_task, gpt2_sae
 from utils.data_utils import generate_synthetic_dataset, generate_gpt2_dataset
+import traceback
 
 
 def load_config(config_path):
@@ -44,6 +45,7 @@ def run_experiment(config):
             raise ValueError(f"Invalid experiment name: {config['experiment']}. Choose from 'synthetic', 'gpt2', 'eeg', 'gpt2-sae'.")
     except Exception as e:
         print(f"An error occurred: {str(e)}")
+        traceback.print_exc()
     finally:
         wandb.finish()
 

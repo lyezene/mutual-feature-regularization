@@ -1,13 +1,18 @@
 import itertools
 from models.sae import SparseAutoencoder, SAETrainer
+from tqdm import tqdm
 
 
 def train_synthetic_sae(params, true_features, train_loader):
     model = SparseAutoencoder(params)
+    total_samples = len(train_loader.dataset)
+    progress_bar = tqdm(total=total_samples, desc="Training SAE")
+
     trainer = SAETrainer(model, params, true_features)
-    losses, mmcs_scores, cos_sim_matrices = trainer.train(
-        train_loader, params["num_epochs"]
-    )
+    
+    losses, mmcs_scores, cos_sim_matrices = trainer.train(train_loader, params["num_epochs"], progress_bar)
+    
+    progress_bar.close()
     return losses, mmcs_scores, cos_sim_matrices
 
 

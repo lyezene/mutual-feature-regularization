@@ -6,13 +6,20 @@ from utils.synthetic_utils import find_combinations, train_synthetic_sae
 from utils.data_utils import generate_synthetic_dataset, load_synthetic_dataset, load_true_features
 import wandb
 from torch.utils.data import DataLoader
+import os
 
 
 def run(device, config):
-    train_dataset = load_synthetic_dataset()
-    train_loader = DataLoader(train_dataset, batch_size=config.get('training_batch_size'), num_workers=4)
+    cache_dir = os.path.join(os.getcwd(), 'hf_cache')
+    os.makedirs(cache_dir, exist_ok=True)
 
-    true_features = load_true_features()
+    chunk_size = 1000  # Adjust this value based on your available memory
+    num_epochs = config['synthetic_epochs']
+    train_dataset = load_synthetic_dataset(cache_dir, chunk_size, num_epochs)
+    
+    train_loader = DataLoader(train_dataset, num_workers=1)
+    
+    true_features = load_true_features(cache_dir)
 
     parameter_grid = {
         'learning_rate': config['learning_rate'],

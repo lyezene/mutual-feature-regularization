@@ -101,13 +101,12 @@ class SAETrainer:
             ar_loss /= num_pairs
         return self.config["beta"] * ar_loss
 
-    def train(self, train_loader, num_epochs):
+    def train(self, train_loader, num_epochs, progress_bar):
         losses, mmcs_scores, cos_sim_matrices = [], [], []
         for epoch in range(num_epochs):
             epoch_loss = 0
-            progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs}", leave=True)
-            for X_batch in progress_bar:
-                X_batch = X_batch.to(self.device)
+            for batch in train_loader:
+                X_batch = batch[0].to(self.device)
                 self.optimizer.zero_grad()
                 hidden_states, reconstructions, *ar_items = self.model(X_batch)
                 ar_loss = self.calculate_ar_loss(ar_items[0]) if ar_items else 0
@@ -120,7 +119,7 @@ class SAETrainer:
                     epoch_loss += loss.item()
 
                 self.optimizer.step()
-
+                progress_bar.update(1)
                 progress_bar.set_postfix({
                     'L2 Loss': f"{l2_loss:.4f}",
                     'L1 Loss': f"{l1_loss:.4f}",
@@ -134,6 +133,7 @@ class SAETrainer:
                 ])
                 mmcs_scores.append(mmcs)
                 cos_sim_matrices.append(cos_sim_matrix)
+                self.progress_bar.update(1)
                 progress_bar.set_postfix({
                     'L2 Loss': f"{l2_loss:.4f}",
                     'L1 Loss': f"{l1_loss:.4f}",

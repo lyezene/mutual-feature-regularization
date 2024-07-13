@@ -12,11 +12,11 @@ def run(device, config):
     cache_dir = os.path.join(os.getcwd(), 'hf_cache')
     os.makedirs(cache_dir, exist_ok=True)
 
-    chunk_size = 1000  # Adjust this value based on your available memory
+    chunk_size = 5000000
     num_epochs = config['synthetic_epochs']
     train_dataset = load_synthetic_dataset(cache_dir, chunk_size, num_epochs)
     
-    train_loader = DataLoader(train_dataset, num_workers=1)
+    train_loader = DataLoader(train_dataset, batch_size=config['training_batch_size'], num_workers=2)
     
     true_features = load_true_features(cache_dir)
 
@@ -30,6 +30,7 @@ def run(device, config):
         'beta': config['beta'],
         'num_saes': config['num_saes'],
         'property': config['property'],
+        'accumulation_steps': config['accumulation_steps'],
     }
 
     for key, value in parameter_grid.items():

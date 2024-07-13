@@ -1,10 +1,10 @@
 experiment: synthetic
-synthetic_epochs: 10
-data_batch_size: 50000000
-training_batch_size: 50000000
+synthetic_epochs: 1
+training_batch_size: 5000000
+accumulation_steps: 1
 learning_rate: [0.001]
 input_size: [256]
-l1_coef: [0.005]
+l1_coef: [0.001]
 hidden_size: [512]
 ar: [False]
 beta: [5.0]

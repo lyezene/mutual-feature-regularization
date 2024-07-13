@@ -4,72 +4,77 @@ from mne.io import read_raw_edf
 from mne.datasets import eegbci
 import torch
 from data.gpt2_dataset import GPT2ActivationDataset
-from data.synthetic_dataset import generate_synthetic_data
 import wandb
 from utils.gpt2_utils import stream_data, process_activations
 from torch.utils.data import IterableDataset
 from huggingface_hub import hf_hub_download
 import math
 import os
+from data.synthetic_dataset import SyntheticIterableDataset
+from config import get_device
 
 
-class SyntheticIterableDataset(IterableDataset):
-    def __init__(self, repo_id, cache_dir=None, chunk_size=1000, num_epochs=1):
-        self.repo_id = repo_id
-        self.cache_dir = cache_dir or os.path.join(os.getcwd(), 'hf_cache')
-        self.batch_files = [f'batch_{i}.pt' for i in range(0, 1000000000, 50000000)]
-        self.total_samples = 1000000000
-        self.chunk_size = chunk_size
-        self.num_epochs = num_epochs
-        self.reset()
+def generate_synthetic_data(
+    num_features,
+    num_true_features,
+    total_data_points,
+    num_active_features_per_point,
+    batch_size,
+    decay_rate=0.99,
+    num_feature_groups=12,
+    device=get_device(),
+    output_dir="synthetic_data_batches"
+):
+    os.makedirs(output_dir, exist_ok=True)
+    true_features = torch.randn(num_features, num_true_features, device=device, dtype=torch.float16)
+    group_size = num_true_features // num_feature_groups
+    feature_group_indices = [
+        torch.arange(i * group_size, (i + 1) * group_size, device=device)
+        for i in range(num_feature_groups)
+    ]
 
-    def reset(self):
-        self.current_epoch = 0
-        self.current_file_index = 0
-        self.current_batch = None
-        self.batch_index = 0
-        self.current_chunk_start = 0
+    group_feature_probs = [
+        torch.pow(decay_rate, torch.arange(group_size, device=device, dtype=torch.float16))
+        for _ in range(num_feature_groups)
+    ]
+    for probs in group_feature_probs:
+        probs /= probs.sum()
 
-    def __iter__(self):
-        return self
+    batch_files = []
 
-    def __next__(self):
-        if self.current_epoch >= self.num_epochs:
-            raise StopIteration
+    for batch_start in tqdm(
+        range(0, total_data_points, batch_size), desc="Generating Batches"
+    ):
+        batch_end = min(batch_start + batch_size, total_data_points)
+        current_batch_size = batch_end - batch_start
+        batch_coefficients = torch.zeros(current_batch_size, num_true_features, device=device, dtype=torch.float16)
 
-        if self.current_batch is None or self.batch_index >= len(self.current_batch):
-            if self.current_file_index >= len(self.batch_files):
-                self.current_epoch += 1
-                if self.current_epoch >= self.num_epochs:
-                    raise StopIteration
-                self.current_file_index = 0
-                self.current_chunk_start = 0
+        selected_groups = torch.randint(num_feature_groups, (current_batch_size,), device=device)
+        for i in range(num_feature_groups):
+            mask = selected_groups == i
+            if mask.any():
+                selected_group_indices = feature_group_indices[i]
+                selected_probs = group_feature_probs[i]
+                selected_features = torch.multinomial(
+                    selected_probs, num_active_features_per_point, replacement=False
+                )
+                indices = selected_group_indices[selected_features]
+                batch_coefficients[mask.nonzero(as_tuple=True)[0].unsqueeze(1), indices] = torch.rand(
+                    mask.sum(), num_active_features_per_point, device=device, dtype=torch.float16
+                )
 
-            if self.current_chunk_start >= 50000000:  # Move to next file
-                self.current_file_index += 1
-                self.current_chunk_start = 0
+        batch_data = torch.mm(batch_coefficients, true_features.T)
 
-            if self.current_file_index >= len(self.batch_files):
-                self.current_epoch += 1
-                if self.current_epoch >= self.num_epochs:
-                    raise StopIteration
-                self.current_file_index = 0
-                self.current_chunk_start = 0
+        batch_file = os.path.join(output_dir, f"batch_{batch_start}.pt")
+        torch.save(batch_data.cpu(), batch_file)
+        batch_files.append(batch_file)
 
-            file_path = hf_hub_download(self.repo_id, f"data/{self.batch_files[self.current_file_index]}", 
-                                        repo_type="dataset", cache_dir=self.cache_dir)
-            
-            full_batch = torch.load(file_path)
-            self.current_batch = full_batch[self.current_chunk_start:self.current_chunk_start + self.chunk_size]
-            self.current_chunk_start += self.chunk_size
-            self.batch_index = 0
+        del batch_coefficients, batch_data
+        torch.cuda.empty_cache()
 
-        item = self.current_batch[self.batch_index].float()
-        self.batch_index += 1
-        return (item,)
-
-    def __len__(self):
-        return self.total_samples * self.num_epochs
+    data_batches = [torch.load(batch_file) for batch_file in batch_files]
+    generated_data = torch.cat(data_batches)
+    return generated_data, true_features
 
 
 def load_synthetic_dataset(cache_dir=None, chunk_size=1000, num_epochs=1):

@@ -1,9 +1,8 @@
 import torch
 from config import get_device
-from data.synthetic_dataset import generate_synthetic_data
 import itertools
 from utils.synthetic_utils import find_combinations, train_synthetic_sae
-from utils.data_utils import generate_synthetic_dataset, load_synthetic_dataset, load_true_features
+from utils.data_utils import load_synthetic_dataset, load_true_features
 import wandb
 from torch.utils.data import DataLoader
 import os

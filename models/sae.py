@@ -1,14 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from config import get_device
-from utils.general_utils import calculate_MMCS, geometric_median
-from datetime import datetime
-import os
-from tqdm import tqdm
 import wandb
-from utils.sae_trainer import SAETrainer
-
+import os
+from utils.general_utils import geometric_median
 
 class SparseAutoencoder(nn.Module):
     def __init__(self, hyperparameters, data_sample):
@@ -17,6 +12,7 @@ class SparseAutoencoder(nn.Module):
         self.encoders = nn.ModuleList()
         self.decoders = nn.ModuleList()
         self.b_pre = nn.Parameter(torch.zeros(self.config["input_size"]))
+        self.k_sparse = self.config["k_sparse"]
         self.initialize_sae(data_sample)
 
     def initialize_sae(self, data_sample):
@@ -39,7 +35,6 @@ class SparseAutoencoder(nn.Module):
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
             nn.init.orthogonal_(m.weight)
-            
             with torch.no_grad():
                 m.weight.data = F.normalize(m.weight.data, dim=1)
 
@@ -50,7 +45,7 @@ class SparseAutoencoder(nn.Module):
         x = x - self.b_pre
 
         for encoder in self.encoders:
-            encoded = self.topk_activation(encoder(x), self.config["k_sparse"])
+            encoded = self.topk_activation(encoder(x), self.k_sparse)
             hidden_states.append(encoded)
 
             normalized_weights = F.normalize(encoder.weight, p=2, dim=1)
@@ -70,6 +65,15 @@ class SparseAutoencoder(nn.Module):
             return hidden_states, reconstructions, additional_output
 
         return hidden_states, reconstructions
+
+    '''
+    @staticmethod
+    @torch.jit.script
+    def topk_activation(x: torch.Tensor, k: int) -> torch.Tensor:
+        top_values, _ = torch.topk(x, k, dim=1)
+        threshold = top_values[:, -1].unsqueeze(1)
+        return torch.where(x >= threshold, x, torch.zeros_like(x))
+    '''
 
     def topk_activation(self, x, k):
         top_values, _ = torch.topk(x, k, dim=1)

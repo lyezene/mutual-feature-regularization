@@ -23,7 +23,7 @@ def run(device, config):
     parameter_grid = {
         'learning_rate': config['learning_rate'],
         'input_size': config['input_size'],
-        'l1_coef': config['l1_coef'],
+        'k_sparse': config['k_sparse'],
         'num_epochs': config['synthetic_epochs'],
         'hidden_size': config['hidden_size'],
         'ar': config['ar'],

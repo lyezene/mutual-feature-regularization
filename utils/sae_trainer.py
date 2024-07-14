@@ -29,10 +29,9 @@ class SAETrainer:
     def combined_loss(self, X_batch, hidden_states, reconstructions, ar_items):
         total_loss = 0
         l2_loss = sum(self.criterion(reconstruction, X_batch) for reconstruction in reconstructions)
-        l1_loss = sum(hidden_state.norm(p=1, dim=1).mean() for hidden_state in hidden_states) * self.config["l1_coef"]
         ar_loss = self.calculate_ar_loss(ar_items[0]) if ar_items else 0
-        total_loss = l2_loss + l1_loss + ar_loss
-        return total_loss, l2_loss, l1_loss, ar_loss
+        total_loss = l2_loss + ar_loss
+        return total_loss, l2_loss, ar_loss
 
     def train(self, train_loader, num_epochs, progress_bar):
         losses, mmcs_scores = [], []
@@ -49,7 +48,7 @@ class SAETrainer:
                 
                 with autocast():
                     hidden_states, reconstructions, *ar_items = self.model(X_batch)
-                    total_loss, l2_loss, l1_loss, ar_loss = self.combined_loss(X_batch, hidden_states, reconstructions, ar_items)
+                    total_loss, l2_loss, ar_loss = self.combined_loss(X_batch, hidden_states, reconstructions, ar_items)
 
                 self.scaler.scale(total_loss).backward()
                 if (batch_idx + 1) % self.config["accumulation_steps"] == 0:
@@ -59,18 +58,17 @@ class SAETrainer:
 
                 epoch_loss += total_loss.item()
                 progress_bar.update(1)
+                self.model.normalize_decoder_weights()
 
                 if batch_idx % log_interval == 0:
                     log_dict = {
                         'L2 Loss': f"{l2_loss.item():.4f}",
-                        'L1 Loss': f"{l1_loss.item():.4f}",
                         'AR Loss': f"{ar_loss:.4f}",
                         'Total Loss': f"{total_loss.item():.4f}"
                     }
                     progress_bar.set_postfix(log_dict)
                     wandb.log({
                         "L2_loss": l2_loss.item(),
-                        "L1_loss": l1_loss.item(),
                         "AR_loss": ar_loss,
                         "total_loss": total_loss.item(),
                     })

@@ -4,7 +4,7 @@ training_batch_size: 5000000
 accumulation_steps: 1
 learning_rate: [0.001]
 input_size: [256]
-l1_coef: [0.001]
+k_sparse: [32]
 hidden_size: [512]
 ar: [False]
 beta: [5.0]

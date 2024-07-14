@@ -4,7 +4,8 @@ from tqdm import tqdm
 
 
 def train_synthetic_sae(params, true_features, train_loader):
-    model = SparseAutoencoder(params)
+    data_sample = next(iter(train_loader))
+    model = SparseAutoencoder(params, data_sample)
     total_samples = len(train_loader) * params["num_epochs"]
     progress_bar = tqdm(total=total_samples, desc="Training SAE")
 

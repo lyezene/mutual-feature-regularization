@@ -21,3 +21,29 @@ def calculate_MMCS(learned_features, true_features, device):
     mmcs = torch.mean(max_cos_sims).item()
 
     return mmcs, cos_sim_matrix
+
+
+def geometric_median(points: torch.Tensor, max_iter: int = 100, tol: float = 1e-5):
+    points = torch.stack(points)
+    points = points.unsqueeze(0)
+
+    guess = points.mean(dim=0)
+    prev = torch.zeros_like(guess)
+
+    weights = torch.ones(len(points), device=points.device)
+
+    for _ in range(max_iter):
+        prev = guess
+
+        diff = points - guess.unsqueeze(0)
+        distances = torch.norm(diff, dim=1)
+
+        weights = 1 / torch.clamp(distances, min=1e-8)
+        weights /= weights.sum()
+
+        guess = (weights.unsqueeze(1) * points).sum(dim=0)
+
+        if torch.norm(guess - prev) < tol:
+            break
+
+    return guess

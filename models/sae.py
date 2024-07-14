@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from config import get_device
-from utils.general_utils import calculate_MMCS
+from utils.general_utils import calculate_MMCS, geometric_median
 from datetime import datetime
 import os
 from tqdm import tqdm
@@ -11,39 +11,48 @@ from utils.sae_trainer import SAETrainer
 
 
 class SparseAutoencoder(nn.Module):
-    def __init__(self, hyperparameters):
+    def __init__(self, hyperparameters, data_sample):
         super(SparseAutoencoder, self).__init__()
         self.config = hyperparameters
         self.encoders = nn.ModuleList()
-        self.initialize_sae()
+        self.b_pre = nn.Parameter(torch.zeros(self.config["input_size"]))
+        self.initialize_sae(data_sample)
 
-    def initialize_sae(self):
+    def initialize_sae(self, data_sample):
         input_size = self.config["input_size"]
         hidden_sizes = [
             self.config["hidden_size"] * (i + 1)
             for i in range(self.config.get("num_saes", 1))
         ]
+
+        self.b_pre.data = geometric_median(data_sample)
+
         for hs in hidden_sizes:
-            self.encoders.append(nn.Linear(input_size, hs))
+            encoder = nn.Linear(input_size, hs, bias=False)
+            self.encoders.append(encoder)
 
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
             nn.init.orthogonal_(m.weight)
-            nn.init.zeros_(m.bias)
+            
+            with torch.no_grad():
+                m.weight.data = F.normalize(m.weight.data, dim=1)
 
     def forward(self, x):
         hidden_states = []
         reconstructions = []
 
+        x = x - self.b_pre
+
         for encoder in self.encoders:
-            encoded = F.relu(encoder(x))
+            encoded = self.topk_activation(encoder(x), self.config["k_sparse"])
             hidden_states.append(encoded)
 
             normalized_weights = F.normalize(encoder.weight, p=2, dim=1)
             decoded = F.linear(encoded, normalized_weights.t())
-            reconstructions.append(decoded)
+            reconstructions.append(decoded + self.b_pre)
 
         if self.config.get("ar", False):
             ar_property = self.config.get("property", "x_hat")
@@ -55,6 +64,16 @@ class SparseAutoencoder(nn.Module):
             return hidden_states, reconstructions, additional_output
 
         return hidden_states, reconstructions
+
+    def topk_activation(self, x, k):
+        top_values, _ = torch.topk(x, k, dim=1)
+        threshold = top_values[:, -1].unsqueeze(1)
+        return torch.where(x >= threshold, x, torch.zeros_like(x))
+
+    def normalize_decoder_weights(self):
+        with torch.no_grad():
+            for encoder in self.encoders:
+                encoder.weight.data = F.normalize(encoder.weight.data, dim=1)
 
     def save_model(self, run_name: str, alias: str="latest"):
         artifact = wandb.Artifact(run_name, type='model')

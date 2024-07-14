@@ -1,8 +1,9 @@
 experiment: synthetic
-synthetic_epochs: 1
-training_batch_size: 5000000
+num_epochs: 1
+training_batch_size: 2500000
+chunk_size: 5000000
 accumulation_steps: 1
-learning_rate: [0.001]
+learning_rate: [0.02]
 input_size: [256]
 k_sparse: [32]
 hidden_size: [512]

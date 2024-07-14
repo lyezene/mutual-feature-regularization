@@ -15,6 +15,7 @@ class SparseAutoencoder(nn.Module):
         super(SparseAutoencoder, self).__init__()
         self.config = hyperparameters
         self.encoders = nn.ModuleList()
+        self.decoders = nn.ModuleList()
         self.b_pre = nn.Parameter(torch.zeros(self.config["input_size"]))
         self.initialize_sae(data_sample)
 
@@ -23,13 +24,15 @@ class SparseAutoencoder(nn.Module):
         hidden_sizes = [
             self.config["hidden_size"] * (i + 1)
             for i in range(self.config.get("num_saes", 1))
-        ]
+        ]   
 
         self.b_pre.data = geometric_median(data_sample)
 
         for hs in hidden_sizes:
             encoder = nn.Linear(input_size, hs, bias=False)
+            decoder = nn.Linear(hs, input_size, bias=False)
             self.encoders.append(encoder)
+            self.decoders.append(decoder)
 
         self.apply(self._init_weights)
 
@@ -54,12 +57,15 @@ class SparseAutoencoder(nn.Module):
             decoded = F.linear(encoded, normalized_weights.t())
             reconstructions.append(decoded + self.b_pre)
 
+        hidden_states = torch.stack(hidden_states)
+        reconstructions = torch.stack(reconstructions)
+
         if self.config.get("ar", False):
             ar_property = self.config.get("property", "x_hat")
             additional_output = (
                 hidden_states
                 if ar_property == "hid"
-                else [encoder.weight for encoder in self.encoders]
+                else torch.stack([encoder.weight for encoder in self.encoders])
             )
             return hidden_states, reconstructions, additional_output
 
@@ -72,8 +78,8 @@ class SparseAutoencoder(nn.Module):
 
     def normalize_decoder_weights(self):
         with torch.no_grad():
-            for encoder in self.encoders:
-                encoder.weight.data = F.normalize(encoder.weight.data, dim=1)
+            for decoder in self.decoders:
+                decoder.weight.data = F.normalize(decoder.weight.data, dim=0)
 
     def save_model(self, run_name: str, alias: str="latest"):
         artifact = wandb.Artifact(run_name, type='model')

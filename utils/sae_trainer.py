@@ -11,7 +11,7 @@ class SAETrainer:
         self.model = model.to(device)
         self.device = device
         self.config = hyperparameters
-        self.optimizer = torch.optim.Adam(
+        self.optimizer = torch.optim.AdamW(
             model.parameters(), lr=self.config["learning_rate"]
         )
         self.criterion = torch.nn.MSELoss()

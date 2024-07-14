@@ -1,4 +1,5 @@
 import torch
+import itertools
 
 
 def calculate_MMCS(learned_features, true_features, device):
@@ -47,3 +48,9 @@ def geometric_median(points: torch.Tensor, max_iter: int = 100, tol: float = 1e-
             break
 
     return guess
+
+
+def find_combinations(grid):
+    keys, values = zip(*grid.items())
+    for v in itertools.product(*values):
+        yield dict(zip(keys, v))

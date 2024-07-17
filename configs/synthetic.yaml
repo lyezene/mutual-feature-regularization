@@ -2,7 +2,7 @@ experiment: synthetic
 num_epochs: 1
 training_batch_size: 2048
 chunk_size: 5000000
-learning_rate: [0.001]
+learning_rate: [0.005]
 input_size: [256]
 k_sparse: [32]
 hidden_size: [512]

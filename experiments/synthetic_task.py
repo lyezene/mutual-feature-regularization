@@ -12,13 +12,14 @@ from tqdm import tqdm
 
 def train_synthetic_sae(params, true_features, train_loader):
     data_sample = next(iter(train_loader))
-    model = torch.compile(SparseAutoencoder(params, data_sample))
+    model = torch.compile(SparseAutoencoder(params))
     total_samples = len(train_loader) * params["num_epochs"]
     progress_bar = tqdm(total=total_samples, desc="Training SAE")
 
-    trainer = SAETrainer(model, params, true_features)
+    device = get_device()
+    trainer = SAETrainer(model, device, params, true_features)
     
-    losses, mmcs_scores = trainer.train(train_loader, params["num_epochs"], progress_bar)
+    losses, mmcs_scores, _ = trainer.train(train_loader, params["num_epochs"])
     
     progress_bar.close()
     return losses, mmcs_scores

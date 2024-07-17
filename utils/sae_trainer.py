@@ -1,131 +1,65 @@
 import torch
-from tqdm import tqdm
+import torch.nn as nn
+from torch.cuda.amp import autocast, GradScaler
+from torch.utils.data import DataLoader
+from typing import List, Tuple, Dict, Any
+import itertools
 import wandb
 from utils.general_utils import calculate_MMCS
-from config import get_device
-from torch.cuda.amp import autocast, GradScaler
 
 
 class SAETrainer:
-    def __init__(self, model, hyperparameters, true_features=None, device=get_device()):
-        self.model = model.to(device)
-        self.device = device
-        self.config = hyperparameters
-        self.optimizer = torch.optim.AdamW(
-            model.parameters(), lr=self.config["learning_rate"]
-        )
-        self.criterion = torch.nn.MSELoss()
-        self.true_features = true_features
-        self.scaler = GradScaler()
-        self.dead_latents = torch.zeros(self.model.encoders[0].weight.shape[0], dtype=torch.bool, device=device)
-        self.latent_activations = torch.zeros_like(self.dead_latents, dtype=torch.long)
-        self.aux_k = self.config.get("aux_k", 512)
-        self.aux_alpha = self.config.get("aux_alpha", 1/32)
-        self.dead_threshold = self.config.get("dead_threshold", 10_000_000)
+    def __init__(self, model: nn.Module, device: torch.device, hyperparameters: Dict[str, Any], true_features: torch.Tensor):
+        self.model: nn.Module = model.to(device)
+        self.device: torch.device = device
+        self.config: Dict[str, Any] = hyperparameters
+        self.optimizer: torch.optim.Adam = torch.optim.Adam(model.parameters(), lr=self.config["learning_rate"])
+        self.criterion: nn.MSELoss = nn.MSELoss()
+        self.true_features: torch.Tensor = true_features.to(device)
+        self.scaler: GradScaler = GradScaler()
 
-    def calculate_ar_loss(self, items):
-        items_flat = torch.stack([item.flatten(start_dim=1) for item in items])
-        dot_product = torch.matmul(items_flat, items_flat.transpose(0, 1))
-        norms = torch.norm(items_flat, dim=1, keepdim=True)
-        cos_sim = dot_product / (norms * norms.transpose(0, 1))
-        ar_loss = (1 - cos_sim.triu(diagonal=1)).mean()
-        return self.config["beta"] * ar_loss
+    def calculate_ar_loss(self, items: List[torch.Tensor]) -> torch.Tensor:
+        pairs: itertools.combinations = itertools.combinations(items, 2)
+        mmcs_values: List[torch.Tensor] = [1 - calculate_MMCS(a.flatten(1), b.flatten(1), self.device)[0] for a, b in pairs]
+        return self.config["beta"] * (sum(mmcs_values) / len(mmcs_values) if mmcs_values else 0)
 
-    def combined_loss(self, X_batch, hidden_states, reconstructions, ar_items):
-        total_loss = 0
-        l2_loss = sum(self.criterion(reconstruction, X_batch) for reconstruction in reconstructions)
-        ar_loss = self.calculate_ar_loss(ar_items[0]) if ar_items else 0
-    
-        aux_loss = self.calculate_aux_loss(X_batch, hidden_states[0])
-    
-        total_loss = l2_loss + ar_loss + self.aux_alpha * aux_loss
-        return total_loss, l2_loss, ar_loss, aux_loss
-
-    def calculate_aux_loss(self, X_batch, hidden_states):
-        with torch.no_grad():
-            # Assuming hidden_states is a list of tensors, one for each encoder
-            for hidden_state in hidden_states:
-                self.latent_activations += (hidden_state != 0).sum(0)
-
-            self.dead_latents = self.latent_activations < self.dead_threshold
-
-        if not self.dead_latents.any():
-            return torch.tensor(0.0, device=self.device)
-
-        reconstruction = self.model.decoders[0](hidden_states[0])
-        e = X_batch - reconstruction
-        dead_latents = hidden_states[0][:, self.dead_latents]
-        top_k_dead, _ = dead_latents.topk(min(self.aux_k, dead_latents.shape[1]), dim=1)
-        e_hat = self.model.decoders[0](top_k_dead)
-
-        aux_loss = torch.nn.functional.mse_loss(e_hat, e)
-
-        return aux_loss
-
-    def train(self, train_loader, num_epochs, progress_bar):
-        losses, mmcs_scores = [], []
-        total_batches = len(train_loader)
-        progress_bar.total = total_batches * num_epochs
-        log_interval = self.config.get("log_interval", 1)
-        mmcs_calculation_interval = self.config.get("mmcs_calculation_interval", 1)
+    def train(self, train_loader: DataLoader, num_epochs: int) -> Tuple[List[float], List[Tuple[float, ...]], List[torch.Tensor]]:
+        losses: List[float] = []
+        mmcs_scores: List[Tuple[float, ...]] = []
+        sim_matrices: List[torch.Tensor] = []
 
         for epoch in range(num_epochs):
-            epoch_loss = 0
-            self.optimizer.zero_grad()
-            for batch_idx, batch in enumerate(train_loader):
-                X_batch = batch[0].to(self.device)
-                
+            total_loss: float = 0
+            for X_batch, in train_loader:
+                X_batch: torch.Tensor = X_batch.to(self.device)
+                self.optimizer.zero_grad()
                 with autocast():
-                    hidden_states, reconstructions, *ar_items = self.model(X_batch)
-                    total_loss, l2_loss, ar_loss, aux_loss = self.combined_loss(X_batch, hidden_states, reconstructions, ar_items)
+                    outputs: List[torch.Tensor] = self.model(X_batch)
+                    ar_loss: torch.Tensor = self.calculate_ar_loss(outputs) if self.config.get("beta", 0) > 0 else torch.tensor(0.0, device=self.device)
+                    l2_loss: torch.Tensor = sum(self.criterion(output, X_batch) for output in outputs)
+                    loss: torch.Tensor = l2_loss + ar_loss
 
-                self.scaler.scale(total_loss).backward()
-                if (batch_idx + 1) % self.config["accumulation_steps"] == 0:
-                    self.scaler.step(self.optimizer)
-                    self.scaler.update()
-                    self.optimizer.zero_grad()
+                self.scaler.scale(loss).backward()
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+                total_loss += loss.item()
 
-                epoch_loss += total_loss.item()
-                progress_bar.update(1)
-                self.model.normalize_decoder_weights()
+                mmcs, sim_matrix = zip(*[
+                    calculate_MMCS(encoder.weight.detach().t(), self.true_features, self.device)
+                    for encoder in self.model.encoders
+                ])
 
-                if batch_idx % log_interval == 0:
-                    log_dict = {
-                        'L2 Loss': f"{l2_loss.item():.4f}",
-                        'AR Loss': f"{ar_loss:.4f}",
-                        'Total Loss': f"{total_loss.item():.4f}"
-                    }
-                    progress_bar.set_postfix(log_dict)
-                    wandb.log({
-                        "L2_loss": l2_loss.item(),
-                        "AR_loss": ar_loss,
-                        "Aux Loss": aux_loss.item(),
-                        "total_loss": total_loss.item(),
-                    })
+                wandb.log({
+                    "MMCS": mmcs,
+                    "L2_loss": l2_loss.item(),
+                    "AR_loss": ar_loss,
+                    "total_loss": loss.item(),
+                })
 
-                if self.true_features is not None and batch_idx % mmcs_calculation_interval == 0:
-                    mmcs = self.calculate_mmcs()
-                    mmcs_scores.append(mmcs)
-                    wandb.log({"MMCS": mmcs})
+            losses.append(total_loss / len(train_loader))
+            mmcs_scores.append(mmcs)
+            sim_matrices.append(sim_matrix)
+            print(f"Epoch {epoch + 1}: Loss = {total_loss / len(train_loader)}, "
+                  f"L2: {l2_loss.item()}, MMCS Scores = {mmcs}, AR Loss = {ar_loss}")
 
-            losses.append(epoch_loss / len(train_loader))
-            wandb.log({
-                "epoch": epoch,
-                "epoch_loss": epoch_loss / len(train_loader),
-            })
-
-        progress_bar.close()
-        self.save_model()
-        return losses, mmcs_scores
-
-    def calculate_mmcs(self):
-        with torch.no_grad():
-            mmcs = [
-                calculate_MMCS(decoder.weight, self.true_features, self.device)[0]
-                for decoder in self.model.decoders
-            ]
-        return mmcs[0]
-
-    def save_model(self):
-        prefix = ""
-        self.model.save_model(prefix)
+        return losses, mmcs_scores, sim_matrices

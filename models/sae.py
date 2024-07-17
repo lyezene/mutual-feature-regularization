@@ -44,16 +44,13 @@ class SparseAutoencoder(nn.Module):
 
         x = x - self.b_pre
 
-        for encoder in self.encoders:
+        for encoder, decoder in zip(self.encoders, self.decoders):
             encoded = self.topk_activation(encoder(x), self.k_sparse)
             hidden_states.append(encoded)
 
-            normalized_weights = F.normalize(encoder.weight, p=2, dim=1)
-            decoded = F.linear(encoded, normalized_weights.t())
+            normalized_weights = F.normalize(decoder.weight, p=2, dim=1)
+            decoded = decoder(encoded)
             reconstructions.append(decoded + self.b_pre)
-
-        hidden_states = torch.stack(hidden_states)
-        reconstructions = torch.stack(reconstructions)
 
         if self.config.get("ar", False):
             ar_property = self.config.get("property", "x_hat")

@@ -17,6 +17,11 @@ class SAETrainer:
         self.criterion = torch.nn.MSELoss()
         self.true_features = true_features
         self.scaler = GradScaler()
+        self.dead_latents = torch.zeros(self.model.encoders[0].weight.shape[0], dtype=torch.bool, device=device)
+        self.latent_activations = torch.zeros_like(self.dead_latents, dtype=torch.long)
+        self.aux_k = self.config.get("aux_k", 512)
+        self.aux_alpha = self.config.get("aux_alpha", 1/32)
+        self.dead_threshold = self.config.get("dead_threshold", 10_000_000)
 
     def calculate_ar_loss(self, items):
         items_flat = torch.stack([item.flatten(start_dim=1) for item in items])
@@ -30,8 +35,32 @@ class SAETrainer:
         total_loss = 0
         l2_loss = sum(self.criterion(reconstruction, X_batch) for reconstruction in reconstructions)
         ar_loss = self.calculate_ar_loss(ar_items[0]) if ar_items else 0
-        total_loss = l2_loss + ar_loss
-        return total_loss, l2_loss, ar_loss
+    
+        aux_loss = self.calculate_aux_loss(X_batch, hidden_states[0])
+    
+        total_loss = l2_loss + ar_loss + self.aux_alpha * aux_loss
+        return total_loss, l2_loss, ar_loss, aux_loss
+
+    def calculate_aux_loss(self, X_batch, hidden_states):
+        with torch.no_grad():
+            # Assuming hidden_states is a list of tensors, one for each encoder
+            for hidden_state in hidden_states:
+                self.latent_activations += (hidden_state != 0).sum(0)
+
+            self.dead_latents = self.latent_activations < self.dead_threshold
+
+        if not self.dead_latents.any():
+            return torch.tensor(0.0, device=self.device)
+
+        reconstruction = self.model.decoders[0](hidden_states[0])
+        e = X_batch - reconstruction
+        dead_latents = hidden_states[0][:, self.dead_latents]
+        top_k_dead, _ = dead_latents.topk(min(self.aux_k, dead_latents.shape[1]), dim=1)
+        e_hat = self.model.decoders[0](top_k_dead)
+
+        aux_loss = torch.nn.functional.mse_loss(e_hat, e)
+
+        return aux_loss
 
     def train(self, train_loader, num_epochs, progress_bar):
         losses, mmcs_scores = [], []
@@ -48,7 +77,7 @@ class SAETrainer:
                 
                 with autocast():
                     hidden_states, reconstructions, *ar_items = self.model(X_batch)
-                    total_loss, l2_loss, ar_loss = self.combined_loss(X_batch, hidden_states, reconstructions, ar_items)
+                    total_loss, l2_loss, ar_loss, aux_loss = self.combined_loss(X_batch, hidden_states, reconstructions, ar_items)
 
                 self.scaler.scale(total_loss).backward()
                 if (batch_idx + 1) % self.config["accumulation_steps"] == 0:
@@ -70,6 +99,7 @@ class SAETrainer:
                     wandb.log({
                         "L2_loss": l2_loss.item(),
                         "AR_loss": ar_loss,
+                        "Aux Loss": aux_loss.item(),
                         "total_loss": total_loss.item(),
                     })
 
@@ -91,8 +121,8 @@ class SAETrainer:
     def calculate_mmcs(self):
         with torch.no_grad():
             mmcs = [
-                calculate_MMCS(encoder.weight.t(), self.true_features, self.device)[0]
-                for encoder in self.model.encoders
+                calculate_MMCS(decoder.weight, self.true_features, self.device)[0]
+                for decoder in self.model.decoders
             ]
         return mmcs[0]
 

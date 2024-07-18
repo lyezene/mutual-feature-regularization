@@ -3,7 +3,6 @@ import torch
 from torch.utils.data import IterableDataset, TensorDataset
 from huggingface_hub import hf_hub_download
 from tqdm import tqdm
-from data.synthetic_dataset import SyntheticIterableDataset
 from config import get_device
 
 
@@ -11,9 +10,9 @@ def generate_synthetic_data(config, device=None):
     device = device or get_device()
     num_features = config.get('num_features', 256)
     num_true_features = config.get('num_ground_features', 512)
-    total_data_points = config.get('total_data_points', 100000)
-    num_active_features_per_point = config.get('num_active_features_per_point', 42)
-    batch_size = config.get('data_batch_size', 1000)
+    total_data_points = config.get('total_data_points', 100000000)
+    num_active_features_per_point = config.get('num_active_features_per_point', 32)
+    batch_size = config.get('data_batch_size', 1000000)
     decay_rate = config.get('decay_rate', 0.99)
     num_feature_groups = config.get('num_feature_groups', 12)
     output_dir = config.get('output_dir', "synthetic_data_batches")
@@ -43,15 +42,3 @@ def generate_synthetic_data(config, device=None):
         torch.cuda.empty_cache()
 
     return torch.cat(batches), true_features
-
-
-def load_synthetic_dataset(cache_dir=None, chunk_size=1000, num_epochs=1):
-    repo_id = "lukemarks/synthetic_dataset"
-    return SyntheticIterableDataset(repo_id, cache_dir, chunk_size, num_epochs)
-
-
-def load_true_features(cache_dir=None):
-    repo_id = "lukemarks/synthetic_dataset"
-    cache_dir = cache_dir or os.path.join(os.getcwd(), 'hf_cache')
-    file_path = hf_hub_download(repo_id, "data/true_features.pt", repo_type="dataset", cache_dir=cache_dir)
-    return torch.load(file_path).float()

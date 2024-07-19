@@ -18,7 +18,7 @@ def train_synthetic_sae(params, true_features, train_loader):
     device = get_device()
     trainer = SAETrainer(model, device, params, true_features)
     
-    losses, mmcs_scores, _ = trainer.train(train_loader, params["num_epochs"])
+    losses, mmcs_scores = trainer.train(train_loader, params["num_epochs"])
     
     progress_bar.close()
     return losses, mmcs_scores

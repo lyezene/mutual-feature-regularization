@@ -7,7 +7,7 @@ from typing import List, Tuple, Dict, Any
 import itertools
 import wandb
 import numpy as np
-from utils.general_utils import calculate_MMCS
+from utils.general_utils import calculate_MMCS, log_sim_matrices
 
 class SAETrainer:
     def __init__(self, model: nn.Module, device: torch.device, hyperparameters: Dict[str, Any], true_features: torch.Tensor):
@@ -27,7 +27,6 @@ class SAETrainer:
     def train(self, train_loader: DataLoader, num_epochs: int) -> Tuple[List[float], List[Tuple[float, ...]], List[torch.Tensor]]:
         losses: List[float] = []
         mmcs_scores: List[Tuple[float, ...]] = []
-        sim_matrices: List[torch.Tensor] = []
         
         for epoch in range(num_epochs):
             total_loss: float = 0
@@ -47,11 +46,9 @@ class SAETrainer:
                 
                 total_loss += loss.item()
                 
-                mmcs, sim_matrix = zip(*[
-                    calculate_MMCS(encoder.weight.t(), self.true_features, self.device)
-                    for encoder in self.model.encoders
-                ])
-                
+                mmcs = tuple(calculate_MMCS(encoder.weight.t(), self.true_features, self.device)[0]
+                         for encoder in self.model.encoders)
+
                 wandb.log({
                     "MMCS": mmcs,
                     "L2_loss": l2_loss.item(),
@@ -61,9 +58,11 @@ class SAETrainer:
             
             losses.append(total_loss / len(train_loader))
             mmcs_scores.append(mmcs)
-            sim_matrices.append(sim_matrix)
-            
-            print(f"Epoch {epoch + 1}: Loss = {total_loss / len(train_loader)}, "
-                  f"L2: {l2_loss.item()}, MMCS Scores = {mmcs}, AR Loss = {ar_loss.item()}")
-        
-        return losses, mmcs_scores, sim_matrices
+
+        final_sim_matrices = [
+            calculate_MMCS(encoder.weight.t(), self.true_features, self.device)[1]
+            for encoder in self.model.encoders
+        ]
+        log_sim_matrices(final_sim_matrices)
+
+        return losses, mmcs_scores

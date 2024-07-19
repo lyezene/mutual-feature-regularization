@@ -1,5 +1,10 @@
 import torch
 import itertools
+import numpy as np
+from typing import List
+import wandb
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 def calculate_MMCS(learned_features, true_features, device):
@@ -24,30 +29,24 @@ def calculate_MMCS(learned_features, true_features, device):
     return mmcs, cos_sim_matrix
 
 
-def geometric_median(points: torch.Tensor, max_iter: int = 100, tol: float = 1e-5):
-    points = torch.stack(points)
-    points = points.unsqueeze(0)
+def log_sim_matrices(sim_matrices: List[torch.Tensor]):
+    first_sim_matrix = sim_matrices[0]
+    sim_matrix_np = first_sim_matrix.detach().cpu().numpy()
 
-    guess = points.mean(dim=0)
-    prev = torch.zeros_like(guess)
+    row_max = np.max(sim_matrix_np, axis=1)
+    col_max = np.max(sim_matrix_np, axis=0)
 
-    weights = torch.ones(len(points), device=points.device)
+    max_similarities = np.concatenate([row_max, col_max])
 
-    for _ in range(max_iter):
-        prev = guess
+    plt.figure(figsize=(10, 6))
+    plt.hist(max_similarities, bins=50, range=(0, 1), edgecolor='black')
+    plt.title("Histogram of Maximum Cosine Similarities (First Encoder)")
+    plt.xlabel("Maximum Cosine Similarity")
+    plt.ylabel("Frequency")
+    plt.tight_layout()
 
-        diff = points - guess.unsqueeze(0)
-        distances = torch.norm(diff, dim=1)
-
-        weights = 1 / torch.clamp(distances, min=1e-8)
-        weights /= weights.sum()
-
-        guess = (weights.unsqueeze(1) * points).sum(dim=0)
-
-        if torch.norm(guess - prev) < tol:
-            break
-
-    return guess
+    wandb.log({"Max_Cosine_Similarities_Histogram_First_Encoder": wandb.Image(plt)})
+    plt.close()
 
 
 def find_combinations(grid):

@@ -19,6 +19,16 @@ class SAETrainer:
         self.true_features: torch.Tensor = true_features.to(device)
         self.scaler: GradScaler = GradScaler()
 
+    def save_true_features(self):
+        artifact = wandb.Artifact(f"{wandb.run.name}_true_features", type="true_features")
+        with artifact.new_file("true_features.pt", mode="wb") as f:
+            torch.save(self.true_features.cpu(), f)
+        wandb.log_artifact(artifact)
+
+    def save_model(self, epoch: int):
+        run_name = f"{wandb.run.name}_epoch_{epoch}"
+        self.model.save_model(run_name, alias=f"epoch_{epoch}")
+
     def calculate_ar_loss(self, items: List[torch.Tensor]) -> torch.Tensor:
         pairs: itertools.combinations = itertools.combinations(items, 2)
         mmcs_values: List[torch.Tensor] = [1 - calculate_MMCS(a.flatten(1), b.flatten(1), self.device)[0] for a, b in pairs]
@@ -58,6 +68,9 @@ class SAETrainer:
             
             losses.append(total_loss / len(train_loader))
             mmcs_scores.append(mmcs)
+
+        self.save_model(epoch + 1)
+        self.save_true_features()
 
         final_sim_matrices = [
             calculate_MMCS(encoder.weight.t(), self.true_features, self.device)[1]

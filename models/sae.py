@@ -10,7 +10,7 @@ class SparseAutoencoder(nn.Module):
         super().__init__()
         self.config: Dict[str, Any] = hyperparameters
         self.encoders: nn.ModuleList = nn.ModuleList([
-            nn.Linear(self.config["input_size"], self.config["hidden_size"] * (i + 1))
+            nn.Linear(self.config["input_size"], self.config["hidden_size"] * (1))
             for i in range(self.config.get("num_saes", 1))
         ])
         self.init_method = torch.rand(self.config.get("num_saes", 1), 1) * 2 - 1
@@ -48,9 +48,11 @@ class SparseAutoencoder(nn.Module):
 
     def save_model(self, run_name: str, alias: str="latest"):
         artifact = wandb.Artifact(run_name, type='model')
+        temp_path = f'{run_name}_temp.pth'
+        torch.save(self.state_dict(), temp_path)
         artifact.add_file(self.state_dict(), f'{run_name}.pth')
         wandb.log_artifact(artifact, aliases=[alias])
-        print(f"Model checkpoint '{alias}' saved as wandb artifact under {run_name}")
+        os.remove(temp_path)
 
     @classmethod
     def load_from_pretrained(cls, artifact_path: str, hyperparameters, device="cpu"):

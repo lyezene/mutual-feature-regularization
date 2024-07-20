@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import List, Dict, Any
 import wandb
+import tempfile
+import os
 
 
 class SparseAutoencoder(nn.Module):
@@ -43,16 +45,13 @@ class SparseAutoencoder(nn.Module):
         top_values, _ = torch.topk(x, k, dim=1)
         return x * (x >= top_values[:, -1:])
 
-    def get_pre_acts(self, x: torch.Tensor, layer_idx: int) -> torch.Tensor:
-        return self.encoders[layer_idx](x)
-
     def save_model(self, run_name: str, alias: str="latest"):
         artifact = wandb.Artifact(run_name, type='model')
-        temp_path = f'{run_name}_temp.pth'
-        torch.save(self.state_dict(), temp_path)
-        artifact.add_file(self.state_dict(), f'{run_name}.pth')
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pth') as tmp_file:
+            torch.save(self.state_dict(), tmp_file.name)
+            artifact.add_file(tmp_file.name, f'{run_name}.pth')
         wandb.log_artifact(artifact, aliases=[alias])
-        os.remove(temp_path)
+        os.remove(tmp_file.name)
 
     @classmethod
     def load_from_pretrained(cls, artifact_path: str, hyperparameters, device="cpu"):

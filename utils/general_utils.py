@@ -4,8 +4,9 @@ import numpy as np
 from typing import List
 import wandb
 import matplotlib.pyplot as plt
-import seaborn as sns
-
+import wandb
+import os
+from models.sae import SparseAutoencoder
 
 def calculate_MMCS(learned_features, true_features, device):
     if not isinstance(true_features, torch.Tensor):
@@ -53,3 +54,27 @@ def find_combinations(grid):
     keys, values = zip(*grid.items())
     for v in itertools.product(*values):
         yield dict(zip(keys, v))
+
+
+def get_recent_model_runs(project, num_saes):
+    api = wandb.Api()
+    return [run for run in api.runs(project) if any(art.type == 'model' for art in run.logged_artifacts())][:num_saes]
+
+
+def load_sae(run, params, device):
+    model_artifact = next(art for art in run.logged_artifacts() if art.type == 'model')
+    artifact_dir = model_artifact.download()
+    model_path = os.path.join(artifact_dir, f"{run.name}_epoch_1.pth")
+    model = SparseAutoencoder(params)
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    return model
+
+
+def load_true_features(project, device):
+    api = wandb.Api()
+    for run in api.runs(project):
+        true_features_artifact = next((art for art in run.logged_artifacts() if art.type == 'true_features'), None)
+        if true_features_artifact:
+            artifact_dir = true_features_artifact.download()
+            return torch.load(os.path.join(artifact_dir, 'true_features.pt'), map_location=device)
+    raise ValueError(f"No valid true_features artifact found in project {project}")

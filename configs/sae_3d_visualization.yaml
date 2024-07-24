@@ -1,0 +1,17 @@
+experiment: sae_3d_visualization
+
+hyperparameters:
+  num_saes: 2
+  input_size: 256
+  hidden_size: 512
+  k_sparse: 32
+  learning_rate: 0.01
+  batch_size: 2048
+  num_epochs: 1
+  weight_decay: 0.01
+
+visualization:
+  plot_title: "SAE Feature 3D Visualization"
+  x_label: "Max Cosine Similarity with True Features"
+  y_label: "Max Cosine Similarity between SAEs"
+  z_label: "Reconstruction Importance"

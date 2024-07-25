@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 import wandb
 import tempfile
 import os
@@ -33,12 +33,17 @@ class SparseAutoencoder(nn.Module):
                 nn.init.zeros_(m.bias)
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
-        return [self._process_layer(encoder, x) for encoder in self.encoders]
+        return [self._process_layer(encoder, x)[0] for encoder in self.encoders]
 
-    def _process_layer(self, encoder: nn.Linear, x: torch.Tensor) -> torch.Tensor:
+    def forward_with_encoded(self, x: torch.Tensor) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+        results = [self._process_layer(encoder, x) for encoder in self.encoders]
+        return [r[0] for r in results], [r[1] for r in results]
+
+    def _process_layer(self, encoder: nn.Linear, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         encoded: torch.Tensor = self._topk_activation(encoder(x))
         normalized_weights: torch.Tensor = F.normalize(encoder.weight, p=2, dim=1)
-        return F.linear(encoded, normalized_weights.t())
+        decoded: torch.Tensor = F.linear(encoded, normalized_weights.t())
+        return decoded, encoded
 
     def _topk_activation(self, x: torch.Tensor) -> torch.Tensor:
         k: int = self.config["k_sparse"]

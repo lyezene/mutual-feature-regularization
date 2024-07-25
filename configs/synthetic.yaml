@@ -2,11 +2,10 @@ experiment: synthetic
 num_epochs: 1
 training_batch_size: 10000
 learning_rate: [0.01]
-dead_feature_threshold: [0.0001]
 input_size: [256]
 k_sparse: [32]
 hidden_size: [512]
-ar: [False]
-beta: [0]
 num_saes: [2]
-property: ['x_hat']
+ensemble_consistency_weight: [0]
+feature_activation_weight: [1]
+penalize_proportion: [0.1]

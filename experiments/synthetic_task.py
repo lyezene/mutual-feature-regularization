@@ -32,7 +32,7 @@ def run(device, config):
         train_dataset = torch.load(dataset_path)
         true_features = torch.load(true_features_path)
     else:
-        train_data, true_features = generate_synthetic_data(config, device)
+        train_data, true_features = generate_synthetic_data(config, device=device)
         train_dataset = TensorDataset(train_data)
         torch.save(train_dataset, dataset_path)
         torch.save(true_features, true_features_path)
@@ -42,7 +42,7 @@ def run(device, config):
 
     parameter_grid = {k: [v] if not isinstance(v, list) else v for k, v in config.items()
                       if k in ['learning_rate', 'input_size', 'k_sparse', 'num_epochs', 'hidden_size',
-                               'ar', 'dead_feature_threshold', 'beta', 'num_saes', 'property', 'accumulation_steps']}
+                               'num_saes', 'property', 'ensemble_consistency_weight', 'feature_activation_weight', 'activation_threshold']}
 
     return [train_synthetic_sae(params, true_features, train_loader)
             for params in find_combinations(parameter_grid)]

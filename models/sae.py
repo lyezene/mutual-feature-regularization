@@ -16,21 +16,13 @@ class SparseAutoencoder(nn.Module):
             for i in range(self.config.get("num_saes", 1))
         ])
         self.init_method = torch.rand(self.config.get("num_saes", 1), 1) * 2 - 1
-        
+
         self.apply(self._init_weights)
 
     def _init_weights(self, m: nn.Module) -> None:
         if isinstance(m, nn.Linear):
-            encoder_index = next((i for i, encoder in enumerate(self.encoders) if encoder == m), None)
-            if encoder_index is not None:
-                init_value = self.init_method[encoder_index].item()
-                if init_value > 0.5:
-                    nn.init.orthogonal_(m.weight)
-                elif 0 < init_value <= 0.5:
-                    nn.init.xavier_uniform_(m.weight)
-                else:
-                    nn.init.kaiming_normal_(m.weight)
-                nn.init.zeros_(m.bias)
+            nn.init.orthogonal_(m.weight)
+            nn.init.zeros_(m.bias)
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         return [self._process_layer(encoder, x)[0] for encoder in self.encoders]
@@ -68,3 +60,4 @@ class SparseAutoencoder(nn.Module):
             model.load_state_dict(torch.load(model_path, map_location=device))
             model.to(device)
             return model
+

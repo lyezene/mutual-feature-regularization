@@ -10,17 +10,15 @@ import numpy as np
 from utils.general_utils import calculate_MMCS, log_sim_matrices
 import math
 
-
 class SAETrainer:
     def __init__(self, model: nn.Module, device: torch.device, hyperparameters: Dict[str, Any], true_features: torch.Tensor):
         self.model: nn.Module = model.to(device)
         self.device: torch.device = device
         self.config: Dict[str, Any] = hyperparameters
-        self.optimizer: torch.optim.Adam = torch.optim.Adam(model.parameters(), lr=self.config["learning_rate"])
+        self.optimizers: List[torch.optim.Adam] = [torch.optim.Adam(encoder.parameters(), lr=self.config["learning_rate"]) for encoder in self.model.encoders]
         self.criterion: nn.MSELoss = nn.MSELoss()
         self.true_features: torch.Tensor = true_features.to(device)
         self.scaler: GradScaler = GradScaler()
-        self.penalize_proportion = hyperparameters.get("penalize_proportion", 0.1)
         self.feature_activation_warmup_batches = hyperparameters.get("feature_activation_warmup_batches", 1000)
 
     def save_true_features(self):
@@ -43,41 +41,18 @@ class SAETrainer:
             return 0.5 * (1 + math.cos(math.pi * (current_step / warmup_steps - 1)))
         return 1.0
 
-    def calculate_feature_activation_regularization(self, encoded_activations: List[torch.Tensor], batch_num: int) -> torch.Tensor:
-        regularization_losses = []
+    def calculate_auxiliary_loss(self, outputs: List[torch.Tensor], encoded_activations: List[torch.Tensor], X_batch: torch.Tensor) -> List[torch.Tensor]:
+        auxiliary_losses = []
+        reconstruction_contributions = [self.criterion(output, X_batch) for output in outputs]
 
-        for act in encoded_activations:
-            # Calculate activation probabilities for this batch
+        for i, act in enumerate(encoded_activations):
             prob_activated = (act != 0).float().mean(dim=0)
-            
-            num_features = act.shape[1]
-            
-            # Calculate the target activation probability
-            target_prob = self.config["k_sparse"] / num_features
-            
-            # Calculate the deviation from the target probability
-            prob_deviation = (prob_activated - target_prob).abs()
-            
-            # Sort features by their deviation from the target
-            sorted_deviations, _ = torch.sort(prob_deviation, descending=True)
-            
-            # Calculate the number of features to penalize
-            num_features_to_penalize = max(1, int(self.penalize_proportion * num_features))
-            
-            # Calculate the loss for the most deviating features
-            feature_loss = sorted_deviations[:num_features_to_penalize].mean()
-            
-            regularization_losses.append(feature_loss)
 
-        regularization_loss = torch.stack(regularization_losses).mean()
-        
-        # Apply warm-up factor
-        warmup_factor = self.cosine_warmup(batch_num, self.feature_activation_warmup_batches)
-        
-        # Apply log scaling to prevent the loss from dominating
-        scaled_loss = torch.log1p(regularization_loss)
-        
-        return self.config.get("feature_activation_weight", 0.1) * scaled_loss * warmup_factor
+            inactive_feature_penalty = (1 - prob_activated).mean()
+            auxiliary_loss = reconstruction_contributions[i] + inactive_feature_penalty
+            auxiliary_losses.append(auxiliary_loss)
+
+        return auxiliary_losses
 
     def train(self, train_loader: DataLoader, num_epochs: int = 1) -> Tuple[List[float], List[Tuple[float, ...]], List[torch.Tensor]]:
         losses: List[float] = []
@@ -87,36 +62,39 @@ class SAETrainer:
             total_loss: float = 0
             for batch_num, (X_batch,) in enumerate(train_loader):
                 X_batch: torch.Tensor = X_batch.to(self.device)
-                self.optimizer.zero_grad()
 
                 with autocast():
                     outputs, activations = self.model.forward_with_encoded(X_batch)
                     encoder_weights = [encoder.weight.t() for encoder in self.model.encoders]
 
                     consensus_loss: torch.Tensor = self.calculate_consensus_loss(encoder_weights)
-                    feature_activation_loss: torch.Tensor = self.calculate_feature_activation_regularization(activations, batch_num)
-                    l2_loss: torch.Tensor = sum(self.criterion(output, X_batch) for output in outputs)
-                    loss: torch.Tensor = l2_loss + consensus_loss + feature_activation_loss
+                    auxiliary_losses: List[torch.Tensor] = self.calculate_auxiliary_loss(outputs, activations, X_batch)
+
+                    total_auxiliary_loss = sum(auxiliary_losses)
+                    loss: torch.Tensor = consensus_loss + total_auxiliary_loss
 
                 self.scaler.scale(loss).backward()
-                self.scaler.step(self.optimizer)
+
+                for optimizer in self.optimizers:
+                    self.scaler.step(optimizer)
                 self.scaler.update()
 
                 total_loss += loss.item()
 
-                mmcs = tuple(calculate_MMCS(encoder.weight.t(), self.true_features, self.device)[0]
-                         for encoder in self.model.encoders)
+                mmcs = [calculate_MMCS(encoder.weight.t(), self.true_features, self.device)[0] for encoder in self.model.encoders]
                 warmup_factor = self.cosine_warmup(batch_num, self.feature_activation_warmup_batches)
+
                 wandb.log({
                     "MMCS": mmcs,
-                    "L2_loss": l2_loss.item(),
                     "Consensus_loss": consensus_loss,
-                    "Feature_Activation_loss": feature_activation_loss.item(),
+                    "Auxiliary_loss": total_auxiliary_loss.item(),
                     "total_loss": loss.item(),
+                    **{f"Auxiliary_loss_SAE_{i}": aux_loss.item() for i, aux_loss in enumerate(auxiliary_losses)},
+                    **{f"MMCS_SAE_{i}": mmcs_i for i, mmcs_i in enumerate(mmcs)}
                 })
 
             losses.append(total_loss / len(train_loader))
-            mmcs_scores.append(mmcs)
+            mmcs_scores.append(tuple(mmcs))
 
         self.save_model(epoch + 1)
         self.save_true_features()
@@ -125,4 +103,3 @@ class SAETrainer:
             for encoder in self.model.encoders
         ]
         log_sim_matrices(final_sim_matrices)
-        return losses, mmcs_scores

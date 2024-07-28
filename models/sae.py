@@ -15,8 +15,6 @@ class SparseAutoencoder(nn.Module):
             nn.Linear(self.config["input_size"], self.config["hidden_size"] * (1))
             for i in range(self.config.get("num_saes", 1))
         ])
-        self.init_method = torch.rand(self.config.get("num_saes", 1), 1) * 2 - 1
-
         self.apply(self._init_weights)
 
     def _init_weights(self, m: nn.Module) -> None:

@@ -7,21 +7,14 @@ from utils.general_utils import find_combinations
 from torch.utils.data import DataLoader, TensorDataset
 import os
 from models.sae import SparseAutoencoder
-from tqdm import tqdm
 
 
 def train_synthetic_sae(params, true_features, train_loader):
     model = torch.compile(SparseAutoencoder(params))
-    total_samples = len(train_loader) * params["num_epochs"]
-    progress_bar = tqdm(total=total_samples, desc="Training SAE")
-
     device = get_device()
     trainer = SAETrainer(model, device, params, true_features)
     
-    losses, mmcs_scores = trainer.train(train_loader, params["num_epochs"])
-    
-    progress_bar.close()
-    return losses, mmcs_scores
+    trainer.train(train_loader, params["num_epochs"])
 
 
 def run(device, config):
@@ -41,8 +34,8 @@ def run(device, config):
                               num_workers=2, pin_memory=True, prefetch_factor=2, shuffle=True)
 
     parameter_grid = {k: [v] if not isinstance(v, list) else v for k, v in config.items()
-                      if k in ['learning_rate', 'input_size', 'k_sparse', 'num_epochs', 'hidden_size',
-                               'feature_activation_warmup_batches', 'num_saes', 'ensemble_consistency_weight', 'feature_activation_weight', 'activation_threshold']}
+                      if k in ['learning_rate', 'input_size', 'k_sparse', 'num_epochs', 'hidden_size', 'penalize_proportion',
+                               'feature_activation_warmup_batches', 'num_saes', 'ensemble_consistency_weight', 'auxiliary_loss_weight']}
 
     return [train_synthetic_sae(params, true_features, train_loader)
             for params in find_combinations(parameter_grid)]

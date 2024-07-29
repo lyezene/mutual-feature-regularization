@@ -35,27 +35,31 @@ def visualize_sae_features_3d(models, true_features, data_loader, device, encode
     all_gt_max_sim, all_max_sim_across_saes, all_activation_probabilities = [], [], []
     colors = []
 
-    for i, current_model in enumerate(models):
-        activation_probabilities = calculate_topk_activation_probability(current_model, data_loader, device)
+    activation_probabilities = calculate_topk_activation_probability(models[0], data_loader, device)
 
-        for encoder_idx in encoders_to_compare:
-            current_encoder_weights = current_model.encoders[encoder_idx].weight.to(device)
-            _, ground_truth_sim = calculate_MMCS(current_encoder_weights.t(), true_features, device)
-            gt_max_sim = ground_truth_sim.max(dim=1)[0]
+    for i, encoder in enumerate(models[0].encoders):
+        current_encoder_weights = encoder.weight.to(device)
+        mmcs, ground_truth_sim = calculate_MMCS(current_encoder_weights.t(), true_features, device)
+        gt_max_sim = ground_truth_sim.max(dim=1)[0]
 
-            other_sae_sims = [calculate_MMCS(current_encoder_weights.t(), other_model.encoders[other_encoder_idx].weight.t(), device)[1]
-                              for j, other_model in enumerate(models) if j != i
-                              for other_encoder_idx in encoders_to_compare]
+        print(f"SAE {i}:")
+        print(f"  MMCS: {mmcs:.4f}")
+        print(f"  GT Max Sim: min={gt_max_sim.min().item():.4f}, max={gt_max_sim.max().item():.4f}, mean={gt_max_sim.mean().item():.4f}")
 
-            max_sim_across_saes = torch.stack([other_sim.max(dim=1)[0] for other_sim in other_sae_sims]).max(dim=0)[0]
+        other_sae_sims = [calculate_MMCS(current_encoder_weights.t(), other_encoder.weight.t(), device)[1]
+                          for j, other_encoder in enumerate(models[0].encoders) if j != i]
 
-            min_features = min(gt_max_sim.shape[0], max_sim_across_saes.shape[0])
-            all_gt_max_sim.append(gt_max_sim[:min_features].detach().cpu().numpy())
-            all_max_sim_across_saes.append(max_sim_across_saes[:min_features].detach().cpu().numpy())
-            all_activation_probabilities.append(activation_probabilities[encoder_idx][:min_features].detach().cpu().numpy())
-            colors.extend(['red' if i == 0 else 'blue'] * min_features)
+        max_sim_across_saes = torch.stack([other_sim.max(dim=1)[0] for other_sim in other_sae_sims]).max(dim=0)[0]
 
-            log_activation_stats(i, encoder_idx, activation_probabilities[encoder_idx])
+        print(f"  Max Sim Across SAEs: min={max_sim_across_saes.min().item():.4f}, max={max_sim_across_saes.max().item():.4f}, mean={max_sim_across_saes.mean().item():.4f}")
+
+        min_features = min(gt_max_sim.shape[0], max_sim_across_saes.shape[0])
+        all_gt_max_sim.append(gt_max_sim[:min_features].detach().cpu().numpy())
+        all_max_sim_across_saes.append(max_sim_across_saes[:min_features].detach().cpu().numpy())
+        all_activation_probabilities.append(activation_probabilities[i][:min_features].detach().cpu().numpy())
+        colors.extend(['red' if i == 0 else 'blue'] * min_features)
+
+        log_activation_stats(i, 0, activation_probabilities[i])
 
     return process_and_visualize_data(all_gt_max_sim, all_max_sim_across_saes, all_activation_probabilities, colors)
 
@@ -141,13 +145,13 @@ def run(device, config):
     torch.set_default_dtype(torch.float32)
     true_features = load_true_features(wandb.run.project, device).to(device).to(torch.float32)
     num_saes = config['hyperparameters'].get('num_saes', 1)
-    model_runs = get_recent_model_runs(wandb.run.project, num_saes)
-    models = [load_sae(run, config['hyperparameters'], device).to(device).to(torch.float32) for run in model_runs]
+    model_runs = get_recent_model_runs(wandb.run.project, 1)  # We only need one model run
+    model = load_sae(model_runs[0], config['hyperparameters'], device).to(device).to(torch.float32)
 
     data_loader, true_features = create_data_loader(config, true_features)
 
     try:
-        results = visualize_sae_features_3d(models, true_features, data_loader, device, range(num_saes))
+        results = visualize_sae_features_3d([model], true_features, data_loader, device, range(num_saes))
         wandb.log({"experiment_completed": True})
         return {
             "gt_max_sim": results[0],

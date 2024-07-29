@@ -52,7 +52,7 @@ class SAETrainer:
             activation_rates = (act != 0).float().mean(dim=0)
             target_rates = torch.full_like(activation_rates, 0.0625)
             relative_diff = torch.abs(activation_rates - target_rates) / target_rates
-            sensitive_diff = torch.pow(relative_diff, 2)
+            sensitive_diff = torch.pow(relative_diff, 3)
             mean_sensitive_diff = sensitive_diff.mean()
             auxiliary_loss = mean_sensitive_diff
             auxiliary_losses.append(auxiliary_loss)

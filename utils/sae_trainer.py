@@ -50,10 +50,11 @@ class SAETrainer:
 
         for act in encoded_activations:
             activation_rates = (act != 0).float().mean(dim=0)
-            epsilon = 1e-8
-            logits = torch.log(activation_rates / (1 - activation_rates + epsilon) + epsilon)
             target_rates = torch.full_like(activation_rates, 0.0625)
-            auxiliary_loss = F.binary_cross_entropy_with_logits(logits, target_rates) 
+            relative_diff = torch.abs(activation_rates - target_rates) / target_rates
+            sensitive_diff = torch.pow(relative_diff, 2)
+            mean_sensitive_diff = sensitive_diff.mean()
+            auxiliary_loss = mean_sensitive_diff
             auxiliary_losses.append(auxiliary_loss)
 
         return [loss * self.auxiliary_loss_weight * warmup_factor for loss in auxiliary_losses]

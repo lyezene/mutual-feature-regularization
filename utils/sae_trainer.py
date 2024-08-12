@@ -20,9 +20,10 @@ class SAETrainer:
         self.criterion: nn.MSELoss = nn.MSELoss()
         self.true_features: torch.Tensor = true_features.to(device)
         self.scalers: List[GradScaler] = [GradScaler() for _ in self.model.encoders]
-        self.feature_activation_warmup_batches = hyperparameters.get("feature_activation_warmup_batches", 1000)
         self.auxiliary_loss_weight = hyperparameters.get("auxiliary_loss_weight", 1.0)
         self.ensemble_consistency_weight = hyperparameters.get("ensemble_consistency_weight", 0.1)
+        self.auxiliary_loss_threshold = hyperparameters.get("auxiliary_loss_threshold", 1)
+        self.use_amp = hyperparameters.get("use_amp", True)
 
     def save_true_features(self):
         artifact = wandb.Artifact(f"{wandb.run.name}_true_features", type="true_features")
@@ -34,18 +35,13 @@ class SAETrainer:
         run_name = f"{wandb.run.name}_epoch_{epoch}"
         self.model.save_model(run_name, alias=f"epoch_{epoch}")
 
-    def cosine_warmup(self, current_step: int, warmup_steps: int) -> float:
-        if current_step < warmup_steps:
-            return 0.5 * (1 + math.cos(math.pi * (current_step / warmup_steps - 1)))
-        return 1.0
-
     def calculate_consensus_loss(self, encoder_weights: List[torch.Tensor]) -> torch.Tensor:
         pairs = itertools.combinations(encoder_weights, 2)
         mmcs_values = [1 - calculate_MMCS(a, b, self.device)[0] for a, b in pairs]
         unweighted_loss = sum(mmcs_values) / len(mmcs_values) if mmcs_values else torch.tensor(0.0, device=self.device)
         return unweighted_loss * self.ensemble_consistency_weight
 
-    def calculate_auxiliary_loss(self, encoded_activations: List[torch.Tensor], warmup_factor: float) -> List[torch.Tensor]:
+    def calculate_auxiliary_loss(self, encoded_activations: List[torch.Tensor]) -> List[torch.Tensor]:
         auxiliary_losses = []
 
         for act in encoded_activations:
@@ -57,7 +53,19 @@ class SAETrainer:
             auxiliary_loss = mean_sensitive_diff
             auxiliary_losses.append(auxiliary_loss)
 
-        return [loss * self.auxiliary_loss_weight * warmup_factor for loss in auxiliary_losses]
+        return [loss * self.auxiliary_loss_weight for loss in auxiliary_losses]
+
+    def reinitialize_sae_weights(self, sae_index: int):
+        encoder = self.model.encoders[sae_index]
+        dtype = encoder.weight.dtype
+        device = encoder.weight.device
+        nn.init.orthogonal_(encoder.weight)
+        nn.init.zeros_(encoder.bias)
+        encoder.weight.data = encoder.weight.data.to(dtype=dtype, device=device)
+        encoder.bias.data = encoder.bias.data.to(dtype=dtype, device=device)
+
+        self.optimizers[sae_index] = torch.optim.Adam(encoder.parameters(), lr=self.config["learning_rate"])
+        self.scalers[sae_index] = GradScaler()
 
     def train(self, train_loader: DataLoader, num_epochs: int = 1) -> Tuple[List[float], List[Tuple[float, ...]], List[torch.Tensor]]:
         for epoch in range(num_epochs):
@@ -65,29 +73,37 @@ class SAETrainer:
             for batch_num, (X_batch,) in enumerate(train_loader):
                 X_batch: torch.Tensor = X_batch.to(self.device)
 
-                with autocast():
+                with autocast(enabled=self.use_amp):
                     outputs, activations = self.model.forward_with_encoded(X_batch)
                     encoder_weights = [encoder.weight.t() for encoder in self.model.encoders]
-
                     consensus_loss: torch.Tensor = self.calculate_consensus_loss(encoder_weights)
                     reconstruction_losses: List[torch.Tensor] = [self.criterion(output, X_batch) for output in outputs]
+                    auxiliary_losses: List[torch.Tensor] = self.calculate_auxiliary_loss(activations)
 
-                    warmup_factor = self.cosine_warmup(batch_num, self.feature_activation_warmup_batches)
-                    auxiliary_losses: List[torch.Tensor] = self.calculate_auxiliary_loss(activations, warmup_factor)
+                reinitialized = [False] * len(self.model.encoders)
+                for i, aux_loss in enumerate(auxiliary_losses):
+                    if aux_loss.item() > self.auxiliary_loss_threshold:
+                        print(f"Auxiliary loss for SAE {i} exceeded threshold. Reinitializing weights.")
+                        self.reinitialize_sae_weights(i)
+                        reinitialized[i] = True
 
-                    sae_losses = []
-                    for rec_loss, aux_loss in zip(reconstruction_losses, auxiliary_losses):
-                        sae_loss = rec_loss + aux_loss
-                        sae_losses.append(sae_loss)
+                if any(reinitialized):
+                    with autocast(enabled=self.use_amp):
+                        outputs, activations = self.model.forward_with_encoded(X_batch)
+                        reconstruction_losses = [self.criterion(output, X_batch) for output in outputs]
+                        auxiliary_losses = self.calculate_auxiliary_loss(activations)
 
-                for i, (optimizer, scaler, sae_loss) in enumerate(zip(self.optimizers, self.scalers, sae_losses)):
+                sae_losses = [rec_loss for rec_loss in reconstruction_losses]
+                total_losses = [sae_loss + consensus_loss for sae_loss in sae_losses]
+
+                for i, (optimizer, scaler, total_loss) in enumerate(zip(self.optimizers, self.scalers, total_losses)):
                     optimizer.zero_grad()
-                    total_sae_loss = sae_loss + consensus_loss
-                    scaler.scale(total_sae_loss).backward(retain_graph=(i < len(self.optimizers) - 1))
+                    scaler.scale(total_loss).backward(retain_graph=(i < len(self.optimizers) - 1))
                     scaler.step(optimizer)
                     scaler.update()
 
-                mmcs = [calculate_MMCS(encoder.weight.t(), self.true_features, self.device)[0] for encoder in self.model.encoders]
+                with torch.no_grad():
+                    mmcs = [calculate_MMCS(encoder.weight.t(), self.true_features, self.device)[0] for encoder in self.model.encoders]
 
                 wandb.log({
                     "Consensus_loss": consensus_loss,

@@ -34,8 +34,7 @@ def run(device, config):
                               num_workers=2, pin_memory=True, prefetch_factor=2, shuffle=True)
 
     parameter_grid = {k: [v] if not isinstance(v, list) else v for k, v in config.items()
-                      if k in ['learning_rate', 'input_size', 'k_sparse', 'num_epochs', 'hidden_size', 'penalize_proportion',
-                               'feature_activation_warmup_batches', 'num_saes', 'ensemble_consistency_weight', 'auxiliary_loss_weight']}
+                      if k in ['learning_rate', 'input_size', 'k_sparse', 'num_epochs', 'hidden_size', 'penalize_proportion', 'num_saes', 'ensemble_consistency_weight', 'auxiliary_loss_weight']}
 
     return [train_synthetic_sae(params, true_features, train_loader)
             for params in find_combinations(parameter_grid)]

@@ -2,9 +2,10 @@ import argparse
 import yaml
 import wandb
 from config import get_device
-from experiments import synthetic_task, feature_correlation, sae_3d_visualization
+from experiments import synthetic_task, feature_correlation, sae_3d_visualization, gpt2_task
 from utils.data_utils import generate_synthetic_data
 import traceback
+
 
 def load_config(config_path):
     if config_path:
@@ -14,12 +15,14 @@ def load_config(config_path):
     else:
         return {}
 
+
 def init_wandb(config):
     default_config = {
         'project': 'alignment_regularization',
         'config': config
     }
     wandb.init(**default_config)
+
 
 def run_experiment(config):
     init_wandb(config)
@@ -34,6 +37,9 @@ def run_experiment(config):
         elif config['experiment'] == 'sae_3d_visualization':
             print("Running SAE 3D Visualization Experiment...")
             sae_3d_visualization.run(device, config)
+        elif config['experiment'] == 'gpt2':
+            print("Running GPT-2 Experiment...")
+            gpt2_task.run(device, config)
         else:
             print(f"Unknown experiment: {config['experiment']}")
     except Exception as e:
@@ -41,6 +47,7 @@ def run_experiment(config):
         traceback.print_exc()
     finally:
         wandb.finish()
+
 
 def main():
     parser = argparse.ArgumentParser(description='Run experiments or generate datasets')
@@ -52,6 +59,7 @@ def main():
         run_experiment(config)
     else:
         print("Error: No configuration file specified. Please provide a configuration file using --config.")
+
 
 if __name__ == '__main__':
     main()

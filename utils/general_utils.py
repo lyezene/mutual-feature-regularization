@@ -8,7 +8,11 @@ import wandb
 import os
 from models.sae import SparseAutoencoder
 
+
 def calculate_MMCS(learned_features, true_features, device):
+    if true_features is None:
+        return None, None
+
     if not isinstance(true_features, torch.Tensor):
         true_features = torch.tensor(true_features, dtype=torch.float32)
 

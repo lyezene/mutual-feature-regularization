@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
-from typing import List, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict, Any
 import itertools
 import wandb
 import numpy as np
@@ -12,13 +12,13 @@ import math
 
 
 class SAETrainer:
-    def __init__(self, model: nn.Module, device: torch.device, hyperparameters: Dict[str, Any], true_features: torch.Tensor):
+    def __init__(self, model: nn.Module, device: torch.device, hyperparameters: Dict[str, Any], true_features: Optional[torch.Tensor] = None):
         self.model: nn.Module = model.to(device)
         self.device: torch.device = device
         self.config: Dict[str, Any] = hyperparameters
         self.optimizers: List[torch.optim.Adam] = [torch.optim.Adam(encoder.parameters(), lr=self.config["learning_rate"]) for encoder in self.model.encoders]
         self.criterion: nn.MSELoss = nn.MSELoss()
-        self.true_features: torch.Tensor = true_features.to(device)
+        self.true_features: Optional[torch.Tensor] = true_features.to(device) if true_features is not None else None
         self.scalers: List[GradScaler] = [GradScaler() for _ in self.model.encoders]
         self.auxiliary_loss_weight = hyperparameters.get("auxiliary_loss_weight", 1.0)
         self.ensemble_consistency_weight = hyperparameters.get("ensemble_consistency_weight", 0.1)

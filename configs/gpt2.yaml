@@ -1,0 +1,13 @@
+experiment: gpt2
+
+hyperparameters:
+  input_size: 3084
+  hidden_size: 6168
+  k_sparse: 32
+  num_saes: 1
+  learning_rate: 0.001
+  batch_size: 10000
+  num_epochs: 1
+  weight_decay: 0.01
+  auxiliary_loss_weight: 0
+  ensemble_consistency_weight: 0

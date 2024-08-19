@@ -1,8 +1,8 @@
 experiment: gpt2
 
 hyperparameters:
-  input_size: 3084
-  hidden_size: 6168
+  input_size: 768
+  hidden_size: 6144
   k_sparse: 32
   num_saes: 1
   learning_rate: 0.001
@@ -11,3 +11,4 @@ hyperparameters:
   weight_decay: 0.01
   auxiliary_loss_weight: 0
   ensemble_consistency_weight: 0
+  data_collection_batch_size: 1

@@ -114,4 +114,5 @@ class SAETrainer:
                 })
 
         self.save_model(epoch + 1)
-        self.save_true_features()
+        if self.true_features is not None:
+            self.save_true_features()

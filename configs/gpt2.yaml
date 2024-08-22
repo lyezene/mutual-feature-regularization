@@ -11,5 +11,5 @@ hyperparameters:
   auxiliary_loss_weight: 0
   ensemble_consistency_weight: 0
   data_collection_batch_size: 128
-  training_batch_size: 1000
+  training_batch_size: 100
   num_samples: 100000

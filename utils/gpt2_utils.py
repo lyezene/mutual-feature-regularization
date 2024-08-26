@@ -22,6 +22,7 @@ class GPT2ActivationsDataset(Dataset):
                 self.activations_per_file = first_file.shape[0]
                 break
             except FileNotFoundError:
+                print("file not found")
                 continue
         
         self.total_samples = self.num_files * self.activations_per_file
@@ -54,7 +55,7 @@ def generate_activations(device: str, num_samples: int, batch_size: int, data_di
     dataset = load_dataset("apollo-research/Skylion007-openwebtext-tokenizer-gpt2", split="train", streaming=True)
     config = GPT2Config.from_pretrained("gpt2")
     embeddings = GPT2Model.from_pretrained("gpt2").wte.to(device)
-    optimized_layer = OptimizedGPT2Layer(config).to(device)
+    optimized_layer = GPT2Shortcut(config).to(device)
 
     dataset_iter = iter(dataset.shuffle(seed=42).take(num_samples))
     for i in tqdm(range(0, num_samples, batch_size), desc="Collecting activations"):

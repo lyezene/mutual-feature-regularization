@@ -14,6 +14,12 @@ from typing import List, Tuple, Dict, Any
 from utils.gpt2_utils import GPT2ActivationsDataset, generate_activations
 
 
+def flatten_collate_fn(batch):
+    tensors = [item[0] for item in batch]
+    flattened_batch = torch.cat(tensors, dim=0)
+    return (flattened_batch,)
+
+
 def run(device: str, config: Dict[str, Any]) -> Dict[str, bool]:
     params = config['hyperparameters']
     data_dir = params.get('data_dir', 'gpt2_activations')
@@ -28,7 +34,7 @@ def run(device: str, config: Dict[str, Any]) -> Dict[str, bool]:
     wandb.init(project="gpt2_sae", config=params)
 
     dataset = GPT2ActivationsDataset(data_dir)
-    dataloader = DataLoader(dataset, batch_size=params['training_batch_size'], shuffle=True, num_workers=4, pin_memory=True)
+    dataloader = DataLoader(dataset, batch_size=params['training_batch_size'], shuffle=True, num_workers=8, pin_memory=True, collate_fn=flatten_collate_fn)
 
     model = SparseAutoencoder(params).to(device)
     trainer = SAETrainer(model, device, params, true_features=None)

@@ -10,6 +10,6 @@ hyperparameters:
   weight_decay: 0.01
   auxiliary_loss_weight: 0
   ensemble_consistency_weight: 0
-  data_collection_batch_size: 200
-  training_batch_size: 200
-  num_samples: 300000
+  data_collection_batch_size: 10
+  training_batch_size: 10
+  num_samples: 1000

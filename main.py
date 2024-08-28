@@ -5,6 +5,8 @@ from config import get_device
 from experiments import synthetic_task, feature_correlation, sae_3d_visualization, gpt2_task
 from utils.data_utils import generate_synthetic_data
 import traceback
+import torch
+import torch.distributed as dist
 
 
 def load_config(config_path):
@@ -39,7 +41,8 @@ def run_experiment(config):
             sae_3d_visualization.run(device, config)
         elif config['experiment'] == 'gpt2':
             print("Running GPT-2 Experiment...")
-            gpt2_task.run(device, config)
+            world_size = torch.cuda.device_count()
+            torch.multiprocessing.spawn(gpt2_task.run, args=(world_size, config), nprocs=world_size, join=True)
         else:
             print(f"Unknown experiment: {config['experiment']}")
     except Exception as e:

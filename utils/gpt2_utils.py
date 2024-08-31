@@ -13,41 +13,30 @@ from models.gpt2 import GPT2Shortcut
 class GPT2ActivationsDataset(Dataset):
     def __init__(self, data_dir: str):
         self.data_dir = data_dir
-        self.activation_files = [f for f in os.listdir(self.data_dir) if f.startswith('activations_') and f.endswith('.npy')]
+        self.activation_files = sorted([f for f in os.listdir(self.data_dir) if f.startswith('activations_') and f.endswith('.npy')])
         self.num_files = len(self.activation_files)
-        
-        for file in self.activation_files:
-            try:
-                first_file = np.load(os.path.join(self.data_dir, file))
-                self.activations_per_file = first_file.shape[0]
-                break
-            except FileNotFoundError:
-                print("file not found")
-                continue
-        
+
+        first_file = np.load(os.path.join(self.data_dir, self.activation_files[0]))
+        self.batch_size, self.seq_len, self.d_model = first_file.shape
+
+        self.activations_per_file = self.batch_size * self.seq_len
         self.total_samples = self.num_files * self.activations_per_file
 
     def __len__(self):
         return self.total_samples
 
     def __getitem__(self, idx):
-        original_file_idx = idx // self.activations_per_file
+        file_idx = idx // self.activations_per_file
         item_idx = idx % self.activations_per_file
 
-        for offset in range(self.num_files):
-            file_idx = (original_file_idx + offset) % self.num_files
-            filename = f"activations_{file_idx}.npy"
-            file_path = os.path.join(self.data_dir, filename)
-            
-            try:
-                activations = np.load(file_path)
-                if item_idx >= activations.shape[0]:
-                    item_idx = 0
-                return (torch.tensor(activations[item_idx], dtype=torch.float32),)
-            except FileNotFoundError:
-                continue
+        batch_idx = (item_idx // self.seq_len) % self.batch_size
+        seq_idx = item_idx % self.seq_len
 
-        raise RuntimeError("No valid activation files found in the dataset.")
+        filename = self.activation_files[file_idx]
+        file_path = os.path.join(self.data_dir, filename)
+
+        activations = np.load(file_path)
+        return (torch.tensor(activations[batch_idx, seq_idx], dtype=torch.float32),)
 
 
 def generate_activations(device: str, num_samples: int, batch_size: int, data_dir: str):

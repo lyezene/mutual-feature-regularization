@@ -29,7 +29,7 @@ def calculate_MMCS(learned_features, true_features, device):
     cos_sim_matrix = torch.matmul(learned_norm.t(), true_norm)
     max_cos_sims = torch.max(cos_sim_matrix, dim=0).values
 
-    mmcs = torch.mean(max_cos_sims).item()
+    mmcs = torch.mean(max_cos_sims)
 
     return mmcs, cos_sim_matrix
 

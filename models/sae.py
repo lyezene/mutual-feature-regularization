@@ -21,9 +21,6 @@ class SparseAutoencoder(nn.Module):
             nn.init.orthogonal_(m.weight)
             nn.init.zeros_(m.bias)
 
-    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
-        return [self._process_layer(encoder, x)[0] for encoder in self.encoders]
-
     def forward_with_encoded(self, x: torch.Tensor) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
         results = [self._process_layer(encoder, x) for encoder in self.encoders]
         return [r[0] for r in results], [r[1] for r in results]

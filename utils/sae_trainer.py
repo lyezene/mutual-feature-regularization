@@ -42,19 +42,24 @@ class SAETrainer:
 
     def calculate_consensus_loss(self, encoder_weights: List[torch.Tensor]) -> torch.Tensor:
         pairs = itertools.combinations(encoder_weights, 2)
-        mmcs_values = [1 - calculate_MMCS(a, b, self.device)[0] for a, b in pairs]
-        unweighted_loss = sum(mmcs_values) / len(mmcs_values) if mmcs_values else torch.tensor(0.0, device=self.device)
+        mmcs_values = [1 - calculate_MMCS(a.clone(), b.clone(), self.device)[0] for a, b in pairs]
+        unweighted_loss = torch.mean(torch.stack(mmcs_values)) if mmcs_values else torch.tensor(0.0, device=self.device)
         return unweighted_loss * self.ensemble_consistency_weight
 
     def calculate_auxiliary_loss(self, encoded_activations: List[torch.Tensor]) -> List[torch.Tensor]:
         auxiliary_losses = []
         for act in encoded_activations:
+            # Ensure the input tensor requires gradients
+            if not act.requires_grad:
+                act = act.detach().requires_grad_(True)
+            
             activation_rates = (act != 0).float().mean(dim=0)
             target_rates = torch.full_like(activation_rates, 0.0625)
             relative_diff = torch.abs(activation_rates - target_rates) / target_rates
             sensitive_diff = torch.pow(relative_diff, 3)
             mean_sensitive_diff = sensitive_diff.mean()
             auxiliary_loss = mean_sensitive_diff
+            print(auxiliary_loss.requires_grad)
             auxiliary_losses.append(auxiliary_loss)
         return [loss * self.auxiliary_loss_weight for loss in auxiliary_losses]
 
@@ -95,9 +100,9 @@ class SAETrainer:
                         outputs, activations = self.base_model.forward_with_encoded(X_batch)
                         reconstruction_losses = [self.criterion(output, X_batch) for output in outputs]
                         auxiliary_losses = self.calculate_auxiliary_loss(activations)
+                        print(type(auxiliary_losses[0]))
 
-                sae_losses = [rec_loss for rec_loss in reconstruction_losses]
-                total_losses = [sae_loss + consensus_loss for sae_loss in sae_losses]
+                total_losses = [rec_loss + consensus_loss for rec_loss in reconstruction_losses]
 
                 for i, (optimizer, scaler, total_loss) in enumerate(zip(self.optimizers, self.scalers, total_losses)):
                     optimizer.zero_grad()
@@ -112,7 +117,6 @@ class SAETrainer:
                 if dist.get_rank() == 0:
                     wandb.log({
                         "Consensus_loss": consensus_loss,
-                        **{f"SAE_{i}_loss": sae_loss.item() for i, sae_loss in enumerate(sae_losses)},
                         **{f"SAE_{i}_reconstruction_loss": rec_loss.item() for i, rec_loss in enumerate(reconstruction_losses)},
                         **{f"SAE_{i}_auxiliary_loss": aux_loss.item() for i, aux_loss in enumerate(auxiliary_losses)},
                         **(({f"MMCS_SAE_{i}": mmcs_i for i, mmcs_i in enumerate(mmcs)}) if self.true_features is not None else {})

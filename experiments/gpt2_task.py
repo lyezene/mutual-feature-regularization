@@ -48,7 +48,7 @@ def run(rank, world_size, config: Dict[str, Any]):
 
     dataset = GPT2ActivationsDataset(data_dir)
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank)
-    dataloader = DataLoader(dataset, batch_size=params['training_batch_size'], sampler=sampler, num_workers=8, pin_memory=True, collate_fn=stack_collate_fn)
+    dataloader = DataLoader(dataset, batch_size=params['training_batch_size'], sampler=sampler, num_workers=6, pin_memory=True, collate_fn=stack_collate_fn)
 
     model = SparseAutoencoder(params).to(rank)
     model = DDP(model, device_ids=[rank])

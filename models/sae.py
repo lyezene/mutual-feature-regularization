@@ -15,6 +15,8 @@ class SparseAutoencoder(nn.Module):
             for i in range(self.config.get("num_saes", 1))
         ])
         self.apply(self._init_weights)
+        base_k_sparse = self.config["k_sparse"]
+        self.k_sparse_values = [base_k_sparse * (i + 1) for i in range(self.config.get("num_saes", 1))]
 
     def _init_weights(self, m: nn.Module) -> None:
         if isinstance(m, nn.Linear):
@@ -22,17 +24,17 @@ class SparseAutoencoder(nn.Module):
             nn.init.zeros_(m.bias)
 
     def forward_with_encoded(self, x: torch.Tensor) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
-        results = [self._process_layer(encoder, x) for encoder in self.encoders]
+        results = [self._process_layer(encoder, x, i) for i, encoder in enumerate(self.encoders)]
         return [r[0] for r in results], [r[1] for r in results]
 
-    def _process_layer(self, encoder: nn.Linear, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        encoded: torch.Tensor = self._topk_activation(encoder(x))
+    def _process_layer(self, encoder: nn.Linear, x: torch.Tensor, encoder_idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        encoded: torch.Tensor = self._topk_activation(encoder(x), encoder_idx)
         normalized_weights: torch.Tensor = F.normalize(encoder.weight, p=2, dim=1)
         decoded: torch.Tensor = F.linear(encoded, normalized_weights.t())
         return decoded, encoded
 
-    def _topk_activation(self, x: torch.Tensor) -> torch.Tensor:
-        k: int = self.config["k_sparse"]
+    def _topk_activation(self, x: torch.Tensor, encoder_idx: int) -> torch.Tensor:
+        k: int = self.k_sparse_values[encoder_idx]
         top_values, _ = torch.topk(x, k, dim=1)
         return x * (x >= top_values[:, -1:])
 

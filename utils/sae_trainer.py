@@ -27,6 +27,13 @@ class SAETrainer:
         self.ensemble_consistency_weight = hyperparameters.get("ensemble_consistency_weight", 0.1)
         self.auxiliary_loss_threshold = hyperparameters.get("auxiliary_loss_threshold", 1)
         self.use_amp = hyperparameters.get("use_amp", True)
+        self.warmup_steps = hyperparameters.get("warmup_steps", 100)
+        self.current_step = 0
+
+    def get_warmup_factor(self) -> float:
+        if self.current_step >= self.warmup_steps:
+            return 1.0
+        return 0.5 * (1 + math.cos(math.pi * (self.warmup_steps - self.current_step) / self.warmup_steps))
 
     def save_true_features(self):
         if dist.get_rank() == 0:
@@ -44,22 +51,18 @@ class SAETrainer:
         pairs = itertools.combinations(encoder_weights, 2)
         mmcs_values = [1 - calculate_MMCS(a.clone(), b.clone(), self.device)[0] for a, b in pairs]
         unweighted_loss = torch.mean(torch.stack(mmcs_values)) if mmcs_values else torch.tensor(0.0, device=self.device)
-        return unweighted_loss * self.ensemble_consistency_weight
+        warmup_factor = self.get_warmup_factor()
+        return unweighted_loss * self.ensemble_consistency_weight * warmup factor
 
     def calculate_auxiliary_loss(self, encoded_activations: List[torch.Tensor]) -> List[torch.Tensor]:
         auxiliary_losses = []
         for act in encoded_activations:
-            # Ensure the input tensor requires gradients
-            if not act.requires_grad:
-                act = act.detach().requires_grad_(True)
-            
             activation_rates = (act != 0).float().mean(dim=0)
             target_rates = torch.full_like(activation_rates, 0.0625)
             relative_diff = torch.abs(activation_rates - target_rates) / target_rates
             sensitive_diff = torch.pow(relative_diff, 3)
             mean_sensitive_diff = sensitive_diff.mean()
             auxiliary_loss = mean_sensitive_diff
-            print(auxiliary_loss.requires_grad)
             auxiliary_losses.append(auxiliary_loss)
         return [loss * self.auxiliary_loss_weight for loss in auxiliary_losses]
 
@@ -78,12 +81,13 @@ class SAETrainer:
         for epoch in range(num_epochs):
             train_loader.sampler.set_epoch(epoch)
             for batch_num, (X_batch,) in enumerate(train_loader):
+                self.current_step += 1
                 X_batch = X_batch.to(self.device)
 
                 with autocast(enabled=self.use_amp):
                     outputs, activations = self.base_model.forward_with_encoded(X_batch)
                     encoder_weights = [encoder.weight.t() for encoder in self.base_model.encoders]
-                    consensus_loss: torch.Tensor = self.calculate_consensus_loss(encoder_weights)
+                    consensus_losses: List[torch.Tensor] = self.calculate_consensus_loss(encoder_weights)
                     reconstruction_losses: List[torch.Tensor] = [self.criterion(output, X_batch) for output in outputs]
                     auxiliary_losses: List[torch.Tensor] = self.calculate_auxiliary_loss(activations)
 

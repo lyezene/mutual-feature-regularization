@@ -1,6 +1,0 @@
-
-Running EEG Experiment...
-/root/alignment-regularization/experiments/eeg_task.py:62: RuntimeWarning: invalid value encountered in divide
-  return (segment - np.mean(segment)) / np.std(segment)
-/root/alignment-regularization/experiments/eeg_task.py:62: RuntimeWarning: divide by zero encountered in divide
-  return (segment - np.mean(segment)) / np.std(segment)

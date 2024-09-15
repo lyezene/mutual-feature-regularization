@@ -1,1 +1,0 @@
-{"Consensus_loss": 0.00405120849609375, "SAE_0_reconstruction_loss": 0.5972044467926025, "SAE_1_reconstruction_loss": 0.46767377853393555, "_timestamp": 1726401976.4800208, "_runtime": 70.69482278823853, "_step": 636, "experiment_completed": true, "_wandb": {"runtime": 68}}

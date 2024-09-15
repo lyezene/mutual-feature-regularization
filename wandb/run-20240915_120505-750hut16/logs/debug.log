@@ -1,0 +1,35 @@
+2024-09-15 12:05:05,778 INFO    MainThread:4788 [wandb_setup.py:_flush():76] Current SDK version is 0.16.6
+2024-09-15 12:05:05,778 INFO    MainThread:4788 [wandb_setup.py:_flush():76] Configure stats pid to 4788
+2024-09-15 12:05:05,779 INFO    MainThread:4788 [wandb_setup.py:_flush():76] Loading settings from /root/.config/wandb/settings
+2024-09-15 12:05:05,779 INFO    MainThread:4788 [wandb_setup.py:_flush():76] Loading settings from /root/alignment-regularization/wandb/settings
+2024-09-15 12:05:05,779 INFO    MainThread:4788 [wandb_setup.py:_flush():76] Loading settings from environment variables: {}
+2024-09-15 12:05:05,779 INFO    MainThread:4788 [wandb_setup.py:_flush():76] Applying setup settings: {'_disable_service': False}
+2024-09-15 12:05:05,779 INFO    MainThread:4788 [wandb_setup.py:_flush():76] Inferring run settings from compute environment: {'program_relpath': 'main.py', 'program_abspath': '/root/alignment-regularization/main.py', 'program': '/root/alignment-regularization/main.py'}
+2024-09-15 12:05:05,779 INFO    MainThread:4788 [wandb_setup.py:_flush():76] Applying login settings: {}
+2024-09-15 12:05:05,779 INFO    MainThread:4788 [wandb_init.py:_log_setup():521] Logging user logs to /root/alignment-regularization/wandb/run-20240915_120505-750hut16/logs/debug.log
+2024-09-15 12:05:05,779 INFO    MainThread:4788 [wandb_init.py:_log_setup():522] Logging internal logs to /root/alignment-regularization/wandb/run-20240915_120505-750hut16/logs/debug-internal.log
+2024-09-15 12:05:05,779 INFO    MainThread:4788 [wandb_init.py:init():561] calling init triggers
+2024-09-15 12:05:05,780 INFO    MainThread:4788 [wandb_init.py:init():568] wandb.init called with sweep_config: {}
+config: {'experiment': 'eeg', 'hyperparameters': {'input_size': 250, 'hidden_size': 512, 'k_sparse': 32, 'num_saes': 2, 'learning_rate': 0.001, 'num_epochs': 1, 'weight_decay': 0.01, 'auxiliary_loss_weight': 0, 'ensemble_consistency_weight': 0.005, 'training_batch_size': 500, 'segment_length_sec': 1.0, 'lowcut': 0.5, 'highcut': 45.0, 'filter_order': 5}, 'data': {'eeg_data_url': 'https://isip.piconepress.com/projects/nedc/data/tuh_eeg/tuh_eeg/v2.0.1/edf/000/aaaaaaac/'}}
+2024-09-15 12:05:05,780 INFO    MainThread:4788 [wandb_init.py:init():611] starting backend
+2024-09-15 12:05:05,780 INFO    MainThread:4788 [wandb_init.py:init():615] setting up manager
+2024-09-15 12:05:05,782 INFO    MainThread:4788 [backend.py:_multiprocessing_setup():105] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2024-09-15 12:05:05,784 INFO    MainThread:4788 [wandb_init.py:init():623] backend started and connected
+2024-09-15 12:05:05,789 INFO    MainThread:4788 [wandb_init.py:init():715] updated telemetry
+2024-09-15 12:05:05,799 INFO    MainThread:4788 [wandb_init.py:init():748] communicating run to backend with 90.0 second timeout
+2024-09-15 12:05:07,426 INFO    MainThread:4788 [wandb_run.py:_on_init():2357] communicating current version
+2024-09-15 12:05:07,616 INFO    MainThread:4788 [wandb_run.py:_on_init():2366] got version response upgrade_message: "wandb version 0.18.0 is available!  To upgrade, please run:\n $ pip install wandb --upgrade"
+
+2024-09-15 12:05:07,617 INFO    MainThread:4788 [wandb_init.py:init():799] starting run threads in backend
+2024-09-15 12:05:07,890 INFO    MainThread:4788 [wandb_run.py:_console_start():2335] atexit reg
+2024-09-15 12:05:07,890 INFO    MainThread:4788 [wandb_run.py:_redirect():2190] redirect: wrap_raw
+2024-09-15 12:05:07,890 INFO    MainThread:4788 [wandb_run.py:_redirect():2255] Wrapping output streams.
+2024-09-15 12:05:07,890 INFO    MainThread:4788 [wandb_run.py:_redirect():2280] Redirects installed.
+2024-09-15 12:05:07,891 INFO    MainThread:4788 [wandb_init.py:init():842] run started, returning control to user process
+2024-09-15 12:06:16,531 INFO    MainThread:4788 [wandb_run.py:_finish():2064] finishing run nlp_and_interpretability/alignment_regularization/750hut16
+2024-09-15 12:06:16,531 INFO    MainThread:4788 [wandb_run.py:_atexit_cleanup():2304] got exitcode: 0
+2024-09-15 12:06:16,531 INFO    MainThread:4788 [wandb_run.py:_restore():2287] restore
+2024-09-15 12:06:16,532 INFO    MainThread:4788 [wandb_run.py:_restore():2293] restore done
+2024-09-15 12:06:27,750 INFO    MainThread:4788 [wandb_run.py:_footer_history_summary_info():3936] rendering history
+2024-09-15 12:06:27,751 INFO    MainThread:4788 [wandb_run.py:_footer_history_summary_info():3968] rendering summary
+2024-09-15 12:06:27,763 INFO    MainThread:4788 [wandb_run.py:_footer_sync_info():3895] logging synced files

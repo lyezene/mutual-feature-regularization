@@ -2,7 +2,7 @@ import argparse
 import yaml
 import wandb
 from config import get_device
-from experiments import synthetic_task, feature_correlation, sae_3d_visualization, gpt2_task
+from experiments import eeg_task, synthetic_task, feature_correlation, sae_3d_visualization, gpt2_task
 from utils.data_utils import generate_synthetic_data
 import traceback
 import torch
@@ -42,6 +42,9 @@ def run_experiment(config):
         elif config['experiment'] == 'gpt2':
             print("Running GPT-2 Experiment...")
             gpt2_task.run(device, config)
+        elif config['experiment'] == 'eeg':
+            print("Running EEG Experiment...")
+            eeg_task.run(device, config)
         else:
             print(f"Unknown experiment: {config['experiment']}")
     except Exception as e:

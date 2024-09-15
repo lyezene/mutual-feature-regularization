@@ -1,0 +1,63 @@
+wandb_version: 1
+
+experiment:
+  desc: null
+  value: eeg
+hyperparameters:
+  desc: null
+  value:
+    input_size: 250
+    hidden_size: 512
+    k_sparse: 32
+    num_saes: 2
+    learning_rate: 0.001
+    num_epochs: 1
+    weight_decay: 0.01
+    auxiliary_loss_weight: 0
+    ensemble_consistency_weight: 0.005
+    training_batch_size: 500
+    segment_length_sec: 1.0
+    lowcut: 0.5
+    highcut: 45.0
+    filter_order: 5
+data:
+  desc: null
+  value:
+    eeg_data_url: https://isip.piconepress.com/projects/nedc/data/tuh_eeg/tuh_eeg/v2.0.1/edf/000/aaaaaaac/
+_wandb:
+  desc: null
+  value:
+    python_version: 3.10.12
+    cli_version: 0.16.6
+    framework: huggingface
+    huggingface_version: 4.40.1
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1726401905.0
+    t:
+      1:
+      - 1
+      - 5
+      - 11
+      - 49
+      - 51
+      - 53
+      - 55
+      2:
+      - 1
+      - 5
+      - 11
+      - 49
+      - 51
+      - 53
+      - 55
+      3:
+      - 2
+      - 16
+      - 23
+      4: 3.10.12
+      5: 0.16.6
+      6: 4.40.1
+      8:
+      - 5
+      13: linux-x86_64

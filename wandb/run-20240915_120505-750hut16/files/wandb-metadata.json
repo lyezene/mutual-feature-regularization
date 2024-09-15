@@ -1,0 +1,81 @@
+{
+    "os": "Linux-5.15.0-117-generic-x86_64-with-glibc2.35",
+    "python": "3.10.12",
+    "heartbeatAt": "2024-09-15T12:05:07.681959",
+    "startedAt": "2024-09-15T12:05:05.775931",
+    "docker": null,
+    "cuda": null,
+    "args": [
+        "--config",
+        "configs/eeg.yaml"
+    ],
+    "state": "running",
+    "program": "/root/alignment-regularization/main.py",
+    "codePathLocal": "main.py",
+    "codePath": "main.py",
+    "git": {
+        "remote": "https://github.com/lyezene/alignment-regularization.git",
+        "commit": "b7b3fadc643f7d466fe254cf1c87cf471d32ab98"
+    },
+    "email": null,
+    "root": "/root/alignment-regularization",
+    "host": "loud-book-flourishes-fin-01",
+    "username": "root",
+    "executable": "/usr/bin/python3",
+    "cpu_count": 6,
+    "cpu_count_logical": 6,
+    "cpu_freq": {
+        "current": 2394.372,
+        "min": 0.0,
+        "max": 0.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 2394.372,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2394.372,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2394.372,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2394.372,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2394.372,
+            "min": 0.0,
+            "max": 0.0
+        },
+        {
+            "current": 2394.372,
+            "min": 0.0,
+            "max": 0.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 48.27519989013672,
+            "used": 22.038490295410156
+        }
+    },
+    "gpu": "Tesla V100-SXM2-16GB",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "Tesla V100-SXM2-16GB",
+            "memory_total": 17179869184
+        }
+    ],
+    "memory": {
+        "total": 20.512603759765625
+    }
+}

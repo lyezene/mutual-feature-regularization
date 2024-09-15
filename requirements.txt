@@ -1,7 +1,7 @@
+pyedflib==0.1.38
 datasets==2.19.0
 huggingface-hub==0.22.2
 matplotlib==3.8.4
-mne==1.7.0
 numpy==1.26.4
 openai==1.23.6
 safetensors==0.4.3

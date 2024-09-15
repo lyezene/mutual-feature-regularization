@@ -39,13 +39,12 @@ class SparseAutoencoder(nn.Module):
         return x * (x >= top_values[:, -1:])
 
     def save_model(self, run_name: str, alias: str="latest"):
-        if torch.distributed.get_rank() == 0:
-            artifact = wandb.Artifact(run_name, type='model')
-            with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pth') as tmp_file:
-                torch.save(self.state_dict(), tmp_file.name)
-                artifact.add_file(tmp_file.name, f'{run_name}.pth')
-            wandb.log_artifact(artifact, aliases=[alias])
-            os.remove(tmp_file.name)
+        artifact = wandb.Artifact(run_name, type='model')
+        with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.pth') as tmp_file:
+            torch.save(self.state_dict(), tmp_file.name)
+            artifact.add_file(tmp_file.name, f'{run_name}.pth')
+        wandb.log_artifact(artifact, aliases=[alias])
+        os.remove(tmp_file.name)
 
     @classmethod
     def load_from_pretrained(cls, artifact_path: str, hyperparameters, device="cpu"):

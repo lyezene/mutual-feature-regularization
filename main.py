@@ -41,8 +41,7 @@ def run_experiment(config):
             sae_3d_visualization.run(device, config)
         elif config['experiment'] == 'gpt2':
             print("Running GPT-2 Experiment...")
-            world_size = torch.cuda.device_count()
-            torch.multiprocessing.spawn(gpt2_task.run, args=(world_size, config), nprocs=world_size, join=True)
+            gpt2_task.run(device, config)
         else:
             print(f"Unknown experiment: {config['experiment']}")
     except Exception as e:

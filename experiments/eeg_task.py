@@ -10,9 +10,11 @@ from models.sae import SparseAutoencoder
 import wandb
 import subprocess
 
+
 def download_eeg_data(url, username, password, output_dir):
     command = f'wget -r -np -nH --cut-dirs=7 --user={username} --password={password} -P {output_dir} {url}'
     subprocess.run(command, shell=True, check=True)
+
 
 def find_edf_files(root_dir):
     edf_files = []
@@ -21,6 +23,7 @@ def find_edf_files(root_dir):
             if filename.lower().endswith('.edf'):
                 edf_files.append(os.path.join(dirpath, filename))
     return edf_files
+
 
 def load_edf_file(file_path):
     f = pyedflib.EdfReader(file_path)
@@ -36,6 +39,7 @@ def load_edf_file(file_path):
     f._close()
     return signals, signal_labels, sampling_rates
 
+
 def bandpass_filter(signal, lowcut, highcut, fs, order):
     nyquist = 0.5 * fs
     low = lowcut / nyquist
@@ -43,6 +47,7 @@ def bandpass_filter(signal, lowcut, highcut, fs, order):
     b, a = butter(order, [low, high], btype='band')
     filtered_signal = filtfilt(b, a, signal)
     return filtered_signal
+
 
 def segment_signal(signal, fs, segment_length_sec):
     segment_length_samples = int(segment_length_sec * fs)
@@ -61,8 +66,10 @@ def segment_signal(signal, fs, segment_length_sec):
 def normalize_segment(segment):
     return (segment - np.mean(segment)) / np.std(segment)
 
+
 def vectorize_segments(segments):
     return [segment.reshape(-1) for segment in segments]
+
 
 def create_normalized_shuffled_dataset(root_dir, segment_length_sec, lowcut, highcut, filter_order):
     edf_files = find_edf_files(root_dir)
@@ -79,13 +86,12 @@ def create_normalized_shuffled_dataset(root_dir, segment_length_sec, lowcut, hig
     dataset = shuffle(dataset, random_state=42)
     return dataset
 
+
 def run(device, config):
-    # Download EEG data
     eeg_data_dir = "eeg_data"
     os.makedirs(eeg_data_dir, exist_ok=True)
     download_eeg_data(config['data']['eeg_data_url'], os.environ['EEG_USERNAME'], os.environ['EEG_PASSWORD'], eeg_data_dir)
 
-    # Create dataset
     dataset = create_normalized_shuffled_dataset(
         eeg_data_dir,
         config['hyperparameters']['segment_length_sec'],
@@ -94,20 +100,10 @@ def run(device, config):
         config['hyperparameters']['filter_order']
     )
 
-    # Convert to PyTorch dataset and create DataLoader
     tensor_dataset = TensorDataset(torch.FloatTensor(dataset))
     dataloader = DataLoader(tensor_dataset, batch_size=config['hyperparameters']['training_batch_size'], shuffle=True)
-
-    # Initialize model
     model = SparseAutoencoder(config['hyperparameters']).to(device)
-
-    # Initialize trainer
     trainer = SAETrainer(model, device, config['hyperparameters'])
-
-    # Train model
     trainer.train(dataloader, config['hyperparameters']['num_epochs'])
-
-    # Save model
     trainer.save_model(config['hyperparameters']['num_epochs'])
-
     wandb.log({"experiment_completed": True})

@@ -37,62 +37,90 @@ def load_edf_file(file_path):
         fs = f.getSampleFrequency(i)
         sampling_rates.append(fs)
     f._close()
-    return signals, signal_labels, sampling_rates
+
+    if not all(fs == sampling_rates[0] for fs in sampling_rates):
+        raise ValueError(f"Signals in {file_path} have different sampling rates.")
+    fs = sampling_rates[0]
+
+    min_length = min(len(sig) for sig in signals)
+    signals = [sig[:min_length] for sig in signals]
+
+    signals = np.array(signals)
+    return signals, signal_labels, fs
 
 
-def bandpass_filter(signal, lowcut, highcut, fs, order):
+def bandpass_filter(signals, lowcut, highcut, fs, order):
     nyquist = 0.5 * fs
     low = lowcut / nyquist
     high = highcut / nyquist
     b, a = butter(order, [low, high], btype='band')
-    filtered_signal = filtfilt(b, a, signal)
-    return filtered_signal
+    filtered_signals = filtfilt(b, a, signals, axis=1)
+    return filtered_signals
 
 
-def segment_signal(signal, fs, segment_length_sec):
+def segment_signal(signals, fs, segment_length_sec):
     segment_length_samples = int(segment_length_sec * fs)
-    n_samples = len(signal)
+    n_channels, n_samples = signals.shape
     segments = []
-    for start in range(0, n_samples, segment_length_samples):
+    for start in range(0, n_samples - segment_length_samples + 1, segment_length_samples):
         end = start + segment_length_samples
-        segment = signal[start:end]
-        if len(segment) == segment_length_samples:
-            segments.append(segment)
-        else:
-            segment = np.pad(segment, (0, segment_length_samples - len(segment)), 'constant')
-            segments.append(segment)
+        segment = signals[:, start:end]
+        segments.append(segment)
+    remainder = n_samples % segment_length_samples
+    if remainder != 0:
+        start = n_samples - remainder
+        segment = signals[:, start:]
+        padding = np.zeros((n_channels, segment_length_samples - remainder))
+        segment = np.hstack((segment, padding))
+        segments.append(segment)
     return segments
 
-def normalize_segment(segment):
-    return (segment - np.mean(segment)) / np.std(segment)
+
+def normalize_segment(segment, epsilon=1e-8):
+    means = np.mean(segment, axis=1, keepdims=True)
+    stds = np.std(segment, axis=1, keepdims=True)
+    stds = np.where(stds < epsilon, epsilon, stds)
+    normalized_segment = (segment - means) / stds
+    return normalized_segment
 
 
 def vectorize_segments(segments):
-    return [segment.reshape(-1) for segment in segments]
+    return [segment.flatten() for segment in segments]
 
 
 def create_normalized_shuffled_dataset(root_dir, segment_length_sec, lowcut, highcut, filter_order):
     edf_files = find_edf_files(root_dir)
     dataset = []
+    n_channels = None
     for file_path in edf_files:
-        signals, _, sampling_rates = load_edf_file(file_path)
-        for sig, fs in zip(signals, sampling_rates):
-            filtered_sig = bandpass_filter(sig, lowcut, highcut, fs, filter_order)
-            segments = segment_signal(filtered_sig, fs, segment_length_sec)
-            normalized_segments = [normalize_segment(segment) for segment in segments]
-            vectorized_segments = vectorize_segments(normalized_segments)
-            dataset.extend(vectorized_segments)
+        signals, _, fs = load_edf_file(file_path)
+        if n_channels is None:
+            n_channels = signals.shape[0]
+        elif signals.shape[0] != n_channels:
+            print(f"Skipping file {file_path} due to inconsistent number of channels.")
+            continue
+
+        filtered_signals = bandpass_filter(signals, lowcut, highcut, fs, filter_order)
+        segments = segment_signal(filtered_signals, fs, segment_length_sec)
+        normalized_segments = [normalize_segment(segment) for segment in segments]
+        vectorized_segments = vectorize_segments(normalized_segments)
+        dataset.extend(vectorized_segments)
     dataset = np.array(dataset)
     dataset = shuffle(dataset, random_state=42)
-    return dataset
+    return dataset, n_channels
 
 
 def run(device, config):
     eeg_data_dir = "eeg_data"
     os.makedirs(eeg_data_dir, exist_ok=True)
-    download_eeg_data(config['data']['eeg_data_url'], os.environ['EEG_USERNAME'], os.environ['EEG_PASSWORD'], eeg_data_dir)
+    download_eeg_data(
+        config['data']['eeg_data_url'],
+        os.environ['EEG_USERNAME'],
+        os.environ['EEG_PASSWORD'],
+        eeg_data_dir
+    )
 
-    dataset = create_normalized_shuffled_dataset(
+    dataset, n_channels = create_normalized_shuffled_dataset(
         eeg_data_dir,
         config['hyperparameters']['segment_length_sec'],
         config['hyperparameters']['lowcut'],
@@ -100,10 +128,20 @@ def run(device, config):
         config['hyperparameters']['filter_order']
     )
 
+    segment_length_samples = int(config['hyperparameters']['segment_length_sec'] * config['hyperparameters']['sampling_rate'])
+    input_dim = n_channels * segment_length_samples
+
+    config['hyperparameters']['input_size'] = 8250
+
     tensor_dataset = TensorDataset(torch.FloatTensor(dataset))
-    dataloader = DataLoader(tensor_dataset, batch_size=config['hyperparameters']['training_batch_size'], shuffle=True)
+    dataloader = DataLoader(
+        tensor_dataset,
+        batch_size=config['hyperparameters']['training_batch_size'],
+        shuffle=True
+    )
     model = SparseAutoencoder(config['hyperparameters']).to(device)
     trainer = SAETrainer(model, device, config['hyperparameters'])
     trainer.train(dataloader, config['hyperparameters']['num_epochs'])
     trainer.save_model(config['hyperparameters']['num_epochs'])
     wandb.log({"experiment_completed": True})
+

@@ -6,6 +6,7 @@ import wandb
 import tempfile
 import os
 
+
 class SparseAutoencoder(nn.Module):
     def __init__(self, hyperparameters: Dict[str, Any]):
         super().__init__()

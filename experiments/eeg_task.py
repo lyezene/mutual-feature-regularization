@@ -9,10 +9,11 @@ from utils.sae_trainer import SAETrainer
 from models.sae import SparseAutoencoder
 import wandb
 import subprocess
+from collections import Counter
 
 
 def download_eeg_data(url, username, password, output_dir):
-    command = f'wget -r -np -nH --cut-dirs=7 --user={username} --password={password} -P {output_dir} {url}'
+    command = f'wget -r -np -nH --cut-dirs=7 --no-clobber --user={username} --password={password} -P {output_dir} {url}'
     subprocess.run(command, shell=True, check=True)
 
 
@@ -38,15 +39,28 @@ def load_edf_file(file_path):
         sampling_rates.append(fs)
     f._close()
 
-    if not all(fs == sampling_rates[0] for fs in sampling_rates):
-        raise ValueError(f"Signals in {file_path} have different sampling rates.")
-    fs = sampling_rates[0]
+    sampling_rate_counts = Counter(sampling_rates)
+    most_common_fs, _ = sampling_rate_counts.most_common(1)[0]
 
-    min_length = min(len(sig) for sig in signals)
-    signals = [sig[:min_length] for sig in signals]
+    filtered_data = [
+        (sig, label)
+        for sig, label, fs in zip(signals, signal_labels, sampling_rates)
+        if fs == most_common_fs
+    ]
 
-    signals = np.array(signals)
-    return signals, signal_labels, fs
+    if not filtered_data:
+        raise ValueError(f"No signals with the most common sampling rate found in {file_path}.")
+
+    signals_filtered, signal_labels_filtered = zip(*filtered_data)
+    signals_filtered = list(signals_filtered)
+    signal_labels_filtered = list(signal_labels_filtered)
+    fs = most_common_fs
+
+    min_length = min(len(sig) for sig in signals_filtered)
+    signals_filtered = [sig[:min_length] for sig in signals_filtered]
+
+    signals_array = np.array(signals_filtered)
+    return signals_array, signal_labels_filtered, fs
 
 
 def bandpass_filter(signals, lowcut, highcut, fs, order):
@@ -131,7 +145,7 @@ def run(device, config):
     segment_length_samples = int(config['hyperparameters']['segment_length_sec'] * config['hyperparameters']['sampling_rate'])
     input_dim = n_channels * segment_length_samples
 
-    config['hyperparameters']['input_size'] = 8250
+    config['hyperparameters']['input_size'] = 8192
 
     tensor_dataset = TensorDataset(torch.FloatTensor(dataset))
     dataloader = DataLoader(

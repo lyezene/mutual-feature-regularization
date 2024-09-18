@@ -1,13 +1,13 @@
 experiment: eeg
 
 hyperparameters:
-  hidden_size: 512
-  k_sparse: 32
+  hidden_size: 256
+  k_sparse: 6
   num_saes: 5
   learning_rate: 0.001
-  num_epochs: 30
+  num_epochs: 1
   weight_decay: 0.01
-  ensemble_consistency_weight: 0.5
+  ensemble_consistency_weight: 0
   training_batch_size: 32
   sampling_rate: 1
   segment_length_sec: 1.0
@@ -16,4 +16,4 @@ hyperparameters:
   filter_order: 5
 
 data:
-  eeg_data_url: "https://isip.piconepress.com/projects/nedc/data/tuh_eeg/tuh_eeg/v2.0.1/edf/000/aaaaaaac/"
+  eeg_data_url: "https://isip.piconepress.com/projects/nedc/data/tuh_eeg/tuh_eeg/v2.0.1/edf/150/aaaaawfy/"

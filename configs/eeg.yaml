@@ -1,15 +1,14 @@
 experiment: eeg
 
 hyperparameters:
-  hidden_size: 256
+  hidden_size: 512
   k_sparse: 6
   num_saes: 5
   learning_rate: 0.001
-  num_epochs: 1
+  num_epochs: 100
   weight_decay: 0.01
   ensemble_consistency_weight: 0
-  training_batch_size: 32
-  sampling_rate: 1
+  training_batch_size: 1024
   segment_length_sec: 1.0
   lowcut: 0.5
   highcut: 45.0

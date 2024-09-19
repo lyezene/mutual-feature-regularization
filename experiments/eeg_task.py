@@ -2,20 +2,17 @@ import os
 import numpy as np
 import pyedflib
 from scipy.signal import butter, filtfilt
-from sklearn.utils import shuffle
 import torch
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, Dataset
 from utils.sae_trainer import SAETrainer
 from models.sae import SparseAutoencoder
 import wandb
 import subprocess
 from collections import Counter
 
-
 def download_eeg_data(url, username, password, output_dir):
     command = f'wget -r -np -nH --cut-dirs=7 --no-clobber --user={username} --password={password} -P {output_dir} {url}'
     subprocess.run(command, shell=True, check=True)
-
 
 def find_edf_files(root_dir):
     edf_files = []
@@ -24,7 +21,6 @@ def find_edf_files(root_dir):
             if filename.lower().endswith('.edf'):
                 edf_files.append(os.path.join(dirpath, filename))
     return edf_files
-
 
 def load_edf_file(file_path):
     f = pyedflib.EdfReader(file_path)
@@ -62,7 +58,6 @@ def load_edf_file(file_path):
     signals_array = np.array(signals_filtered)
     return signals_array, signal_labels_filtered, fs
 
-
 def bandpass_filter(signals, lowcut, highcut, fs, order):
     nyquist = 0.5 * fs
     low = lowcut / nyquist
@@ -70,7 +65,6 @@ def bandpass_filter(signals, lowcut, highcut, fs, order):
     b, a = butter(order, [low, high], btype='band')
     filtered_signals = filtfilt(b, a, signals, axis=1)
     return filtered_signals
-
 
 def segment_signal(signals, fs, segment_length_sec):
     segment_length_samples = int(segment_length_sec * fs)
@@ -89,7 +83,6 @@ def segment_signal(signals, fs, segment_length_sec):
         segments.append(segment)
     return segments
 
-
 def normalize_segment(segment, epsilon=1e-8):
     means = np.mean(segment, axis=1, keepdims=True)
     stds = np.std(segment, axis=1, keepdims=True)
@@ -97,17 +90,19 @@ def normalize_segment(segment, epsilon=1e-8):
     normalized_segment = (segment - means) / stds
     return normalized_segment
 
-
 def vectorize_segments(segments):
     return [segment.flatten() for segment in segments]
 
-
-def create_normalized_shuffled_dataset(root_dir, segment_length_sec, lowcut, highcut, filter_order):
+def preprocess_and_save_data(root_dir, processed_data_file, segment_length_sec, lowcut, highcut, filter_order, most_common_fs):
     edf_files = find_edf_files(root_dir)
-    dataset = []
     n_channels = None
-    for file_path in edf_files:
+    segments_list = []
+    for file_idx, file_path in enumerate(edf_files):
         signals, _, fs = load_edf_file(file_path)
+        if fs != most_common_fs:
+            print(f"Skipping file {file_path} due to different sampling rate ({fs} Hz).")
+            continue
+
         if n_channels is None:
             n_channels = signals.shape[0]
         elif signals.shape[0] != n_channels:
@@ -118,14 +113,33 @@ def create_normalized_shuffled_dataset(root_dir, segment_length_sec, lowcut, hig
         segments = segment_signal(filtered_signals, fs, segment_length_sec)
         normalized_segments = [normalize_segment(segment) for segment in segments]
         vectorized_segments = vectorize_segments(normalized_segments)
-        dataset.extend(vectorized_segments)
-    dataset = np.array(dataset)
-    dataset = shuffle(dataset, random_state=42)
-    return dataset, n_channels
 
+        segments_list.extend(vectorized_segments)
+
+    # Convert to float16 tensor
+    segments_array = np.array(segments_list, dtype=np.float16)
+    segments_tensor = torch.from_numpy(segments_array)
+    # Save tensor to file
+    torch.save(segments_tensor, processed_data_file)
+    return n_channels
+
+class EEGDataset(Dataset):
+    def __init__(self, processed_data_file):
+        # Load the preprocessed data into memory
+        self.segments_tensor = torch.load(processed_data_file, map_location='cpu')
+        self.n_segments = self.segments_tensor.shape[0]
+        self.segment_shape = self.segments_tensor.shape[1:]
+
+    def __len__(self):
+        return self.n_segments
+
+    def __getitem__(self, idx):
+        segment = self.segments_tensor[idx]
+        return (segment,)
 
 def run(device, config):
     eeg_data_dir = "eeg_data"
+    processed_data_file = "processed_data.pt"
     os.makedirs(eeg_data_dir, exist_ok=True)
     download_eeg_data(
         config['data']['eeg_data_url'],
@@ -134,25 +148,50 @@ def run(device, config):
         eeg_data_dir
     )
 
-    dataset, n_channels = create_normalized_shuffled_dataset(
+    # Collect sampling rates from all EDF files
+    edf_files = find_edf_files(eeg_data_dir)
+    sampling_rates = []
+    for file_path in edf_files:
+        f = pyedflib.EdfReader(file_path)
+        n = f.signals_in_file
+        for i in range(n):
+            fs = f.getSampleFrequency(i)
+            sampling_rates.append(fs)
+        f._close()
+
+    # Determine the most common sampling rate
+    sampling_rate_counts = Counter(sampling_rates)
+    most_common_fs, _ = sampling_rate_counts.most_common(1)[0]
+    print(f"Most common sampling rate across all files: {most_common_fs} Hz")
+
+    # Preprocess and save data
+    n_channels = preprocess_and_save_data(
         eeg_data_dir,
+        processed_data_file,
         config['hyperparameters']['segment_length_sec'],
         config['hyperparameters']['lowcut'],
         config['hyperparameters']['highcut'],
-        config['hyperparameters']['filter_order']
+        config['hyperparameters']['filter_order'],
+        most_common_fs
     )
 
-    segment_length_samples = int(config['hyperparameters']['segment_length_sec'] * config['hyperparameters']['sampling_rate'])
+    # Calculate input dimension based on the determined sampling rate
+    segment_length_samples = int(config['hyperparameters']['segment_length_sec'] * most_common_fs)
     input_dim = n_channels * segment_length_samples
+    config['hyperparameters']['input_size'] = input_dim
 
-    config['hyperparameters']['input_size'] = 8192
+    # Create the EEG dataset and dataloader
+    eeg_dataset = EEGDataset(processed_data_file)
 
-    tensor_dataset = TensorDataset(torch.FloatTensor(dataset))
     dataloader = DataLoader(
-        tensor_dataset,
+        eeg_dataset,
         batch_size=config['hyperparameters']['training_batch_size'],
-        shuffle=True
+        shuffle=True,
+        num_workers=0,  # Set to 0 to avoid multiprocessing issues
+        pin_memory=True
     )
+
+    # Initialize model, trainer, etc.
     model = SparseAutoencoder(config['hyperparameters']).to(device)
     trainer = SAETrainer(model, device, config['hyperparameters'])
     trainer.train(dataloader, config['hyperparameters']['num_epochs'])

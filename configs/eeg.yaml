@@ -5,7 +5,7 @@ hyperparameters:
   k_sparse: 6
   num_saes: 5
   learning_rate: 0.001
-  num_epochs: 100
+  num_epochs: 10
   weight_decay: 0.01
   ensemble_consistency_weight: 0
   training_batch_size: 1024

@@ -10,7 +10,7 @@ def generate_synthetic_data(config, true_features=None, device=None):
     device = device or get_device()
     num_features = config.get('num_features', 256)
     num_true_features = config.get('num_ground_features', 512)
-    total_data_points = config.get('total_data_points', 100000000)
+    total_data_points = config.get('total_data_points', 1000)
     num_active_features_per_point = config.get('num_active_features_per_point', 32)
     batch_size = config.get('data_batch_size', 1000000)
     decay_rate = config.get('decay_rate', 0.99)

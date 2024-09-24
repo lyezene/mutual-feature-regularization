@@ -20,7 +20,7 @@ def load_config(config_path):
 
 def init_wandb(config):
     default_config = {
-        'project': 'mutual_regularization',
+        'project': 'alignment_regularization',
         'config': config
     }
     wandb.init(**default_config)

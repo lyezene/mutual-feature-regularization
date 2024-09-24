@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import wandb
 import os
 from models.sae import SparseAutoencoder
+from scipy.optimize import linear_sum_assignment
 
 
 def calculate_MMCS(learned_features, true_features, device):
@@ -28,6 +29,10 @@ def calculate_MMCS(learned_features, true_features, device):
 
     cos_sim_matrix = torch.matmul(learned_norm.t(), true_norm)
     max_cos_sims = torch.max(cos_sim_matrix, dim=0).values
+
+    cost_matrix = 1 - cos_sim_matrix.detach().cpu().numpy()
+    row_ind, col_ind = linear_sum_assignment(cost_matrix)
+    max_cos_sims = cos_sim_matrix[row_ind, col_ind]
 
     mmcs = torch.mean(max_cos_sims)
 
@@ -60,18 +65,38 @@ def find_combinations(grid):
         yield dict(zip(keys, v))
 
 
-def get_recent_model_runs(project, num_saes):
+def load_specific_run(project, run_id):
     api = wandb.Api()
-    return [run for run in api.runs(project) if any(art.type == 'model' for art in run.logged_artifacts())][:num_saes]
+    return api.run(f"{project}/{run_id}")
 
 
-def load_sae(run, params, device):
+def load_sae(run, params, device, encoder_idx):
     model_artifact = next(art for art in run.logged_artifacts() if art.type == 'model')
     artifact_dir = model_artifact.download()
     model_path = os.path.join(artifact_dir, f"{run.name}_epoch_1.pth")
     model = SparseAutoencoder(params)
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    state_dict = torch.load(model_path, map_location=device)
+    
+    encoder_state_dict = {
+        f"encoders.{encoder_idx}.weight": state_dict['weight'],
+        f"encoders.{encoder_idx}.bias": state_dict['bias']
+    }
+    
+    model.load_state_dict(encoder_state_dict, strict=False)
     return model
+
+
+def load_true_features_from_run(run, device):
+    true_features_artifact = next((art for art in run.logged_artifacts() if art.type == 'true_features'), None)
+    if true_features_artifact:
+        artifact_dir = true_features_artifact.download()
+        return torch.load(os.path.join(artifact_dir, 'true_features.pt'), map_location=device)
+    raise ValueError(f"No valid true_features artifact found in run {run.id}")
+
+
+def get_recent_model_runs(project, num_saes):
+    api = wandb.Api()
+    return [run for run in api.runs(project) if any(art.type == 'model' for art in run.logged_artifacts())][:num_saes]
 
 
 def load_true_features(project, device):

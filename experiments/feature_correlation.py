@@ -1,9 +1,11 @@
+import seaborn as sns
 import torch
 import wandb
 import numpy as np
 import matplotlib.pyplot as plt
-from utils.general_utils import calculate_MMCS, get_recent_model_runs, load_sae, load_true_features
-
+from utils.general_utils import calculate_MMCS, load_specific_run, load_sae, load_true_features_from_run
+import os
+from models.sae import SparseAutoencoder
 
 def analyze_feature_correlations(models, true_features, device, encoders_to_compare):
     results = []
@@ -61,36 +63,77 @@ def analyze_feature_correlations(models, true_features, device, encoders_to_comp
         "Average_Frequency_Learned": np.mean(frequency_learned)
     })
 
+    colors = np.array(colors)
     plt.figure(figsize=(10, 8))
-    plt.scatter(gt_max_sim, max_sim_across_saes, alpha=0.5, c=colors)
-    plt.xlabel("Max Cosine Similarity with True Features")
-    plt.ylabel("Max Cosine Similarity between SAEs")
-    plt.title("SAE Feature Similarity: True Features vs Inter-SAE")
-    plt.xlim(0, 1)
-    plt.ylim(0, 1)
-    plt.grid(True)
+
+    categories = np.unique(colors)
+    markers = ['o', 's']
+    category_labels = ['SAE 1', 'SAE 2']
+    colors_map = ['#1f77b4', '#ff7f0e']
+
+    for i, category in enumerate(categories):
+        idx = (colors == category)
+        plt.scatter(
+            gt_max_sim[idx],
+            max_sim_across_saes[idx],
+            alpha=0.7,
+            label=category_labels[i],
+            marker=markers[i],
+            color=colors_map[i],
+            edgecolor='k'
+        )
 
     z = np.polyfit(gt_max_sim, max_sim_across_saes, 1)
-    corr_line, = plt.plot(gt_max_sim, np.poly1d(z)(gt_max_sim), "k--", alpha=0.8)
-    plt.text(0.05, 0.95, f'Correlation: {overall_correlation[0, 1]:.3f}', transform=plt.gca().transAxes)
+    p = np.poly1d(z)
+    plt.plot(
+        gt_max_sim,
+        p(gt_max_sim),
+        "k--",
+        linewidth=2,
+        label='Correlation Line'
+    )
 
-    plt.legend(handles=[corr_line, plt.scatter([], [], c='red', alpha=0.5), plt.scatter([], [], c='blue', alpha=0.5)],
-               labels=['Correlation Line', 'SAE 1', 'SAE 2'],
-               loc='lower right')
+    plt.xlabel("Similarity with Input Feature", fontsize=14)
+    plt.ylabel("Similarity with SAE Feature", fontsize=14)
+    plt.xlim(0, 1)
+    plt.ylim(0, 1)
+    plt.xticks(np.linspace(0, 1, 6))
+    plt.yticks(np.linspace(0, 1, 6))
 
-    plt.savefig('sae_similarity_scatter.png')
+    plt.grid(True, linestyle='--', alpha=0.7)
+
+    plt.legend(loc='lower right', fontsize=12)
+    plt.tight_layout()
+    plt.savefig('sae_similarity_scatter.png', dpi=300)
     plt.close()
+ 
     wandb.log({"SAE_Similarity_Scatter": wandb.Image('sae_similarity_scatter.png')})
 
     return results
 
 
 def run(device, config):
-    true_features = load_true_features(wandb.run.project, device)
-    num_saes = config['hyperparameters'].get('num_saes', 1)
-    model_runs = get_recent_model_runs(wandb.run.project, num_saes)
-    models = [load_sae(run, config['hyperparameters'], device) for run in model_runs]
-    results = analyze_feature_correlations(models, true_features, device, list(range(num_saes)))
+    run_id = config['run_id']
+    
+    specific_run = load_specific_run(wandb.run.project, run_id)
+    true_features = load_true_features_from_run(specific_run, device)
+    
+    model_artifact = next(art for art in specific_run.logged_artifacts() if art.type == 'model')
+    artifact_dir = model_artifact.download()
+    model_path = os.path.join(artifact_dir, f"{specific_run.name}_epoch_1.pth")
+    full_state_dict = torch.load(model_path, map_location=device)
+    
+    models = []
+    for encoder_idx in range(2):
+        model = SparseAutoencoder(config['hyperparameters'])
+        encoder_state_dict = {
+            f"encoders.{encoder_idx}.weight": full_state_dict[f'encoders.{encoder_idx}.weight'],
+            f"encoders.{encoder_idx}.bias": full_state_dict[f'encoders.{encoder_idx}.bias']
+        }
+        model.load_state_dict(encoder_state_dict, strict=False)
+        models.append(model)
+    
+    results = analyze_feature_correlations(models, true_features, device, [0, 1])
     for result in results:
         wandb.log(result)
     wandb.log({"experiment_completed": True})

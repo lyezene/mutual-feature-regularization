@@ -1,3 +1,5 @@
+import os
+from models.sae import SparseAutoencoder
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -5,7 +7,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import wandb
 from torch.utils.data import DataLoader, TensorDataset
-from utils.general_utils import calculate_MMCS, get_recent_model_runs, load_sae, load_true_features
+from utils.general_utils import calculate_MMCS, load_specific_run, load_true_features_from_run
 from utils.data_utils import generate_synthetic_data
 from config import get_device
 import traceback
@@ -25,7 +27,7 @@ def calculate_topk_activation_probability(model, data_loader, device):
 
             for encoder_idx, encoder in enumerate(model.encoders):
                 encoded = encoder(x)
-                topk_encoded = model._topk_activation(encoded)
+                topk_encoded = model._topk_activation(encoded, encoder_idx)
                 activation_counts[encoder_idx] += (topk_encoded != 0).float().sum(dim=0)
 
     return [counts / total_samples for counts in activation_counts]
@@ -92,22 +94,50 @@ def process_and_visualize_data(all_gt_max_sim, all_max_sim_across_saes, all_acti
 
 
 def create_3d_plot(x, y, z, colors, title, filename):
+    colors = np.array(colors)
+    
     fig = plt.figure(figsize=(12, 10))
     ax = fig.add_subplot(111, projection='3d')
-    scatter = ax.scatter(x, y, z, c=colors, alpha=0.6)
-    ax.set_xlabel('Max Cosine Similarity with True Features')
-    ax.set_ylabel('Max Cosine Similarity between SAEs')
-    ax.set_zlabel('Top-k Activation Probability')
-    ax.set_title(title)
 
-    color_map = plt.cm.get_cmap('coolwarm')
-    sm = plt.cm.ScalarMappable(cmap=color_map, norm=plt.Normalize(vmin=0, vmax=1))
-    sm.set_array([])
-    cbar = fig.colorbar(sm, ax=ax)
-    cbar.set_label('SAE Index (Red: SAE 1, Blue: SAE 2)')
+    categories = np.unique(colors)
+    markers = ['o', 's']
+    category_labels = ['SAE 1', 'SAE 2']
+    colors_map = ['#1f77b4', '#ff7f0e']
+
+    for i, category in enumerate(categories):
+        idx = (colors == category)
+        ax.scatter(
+            x[idx],
+            y[idx],
+            z[idx],
+            alpha=0.7,
+            label=category_labels[i],
+            marker=markers[i],
+            color=colors_map[i],
+            edgecolor='k',
+            s=50
+        )
+
+    ax.set_xlabel('Similarity with True Feature', fontsize=14, labelpad=10)
+    ax.set_ylabel('Similarity with SAE feature', fontsize=14, labelpad=10)
+    ax.set_zlabel('Activation Probability', fontsize=14, labelpad=10)
+
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_zlim(0, 1)
+
+    ticks = np.linspace(0, 1, 6)
+    ax.set_xticks(ticks)
+    ax.set_yticks(ticks)
+    ax.set_zticks(ticks)
+
+    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.view_init(elev=20, azim=120)
+    legend = ax.legend(loc='best', fontsize=12)
 
     plt.tight_layout()
-    plt.savefig(filename)
+
+    plt.savefig(filename, dpi=300)
     plt.close(fig)
 
 
@@ -143,22 +173,33 @@ def create_data_loader(config, true_features=None):
 
 def run(device, config):
     torch.set_default_dtype(torch.float32)
-    true_features = load_true_features(wandb.run.project, device).to(device).to(torch.float32)
-    num_saes = config['hyperparameters'].get('num_saes', 1)
-    model_runs = get_recent_model_runs(wandb.run.project, 1)  # We only need one model run
-    model = load_sae(model_runs[0], config['hyperparameters'], device).to(device).to(torch.float32)
+    run_id = config['run_id']
+    specific_run = load_specific_run(wandb.run.project, run_id)
+    true_features = load_true_features_from_run(specific_run, device).to(device).to(torch.float32)
 
-    data_loader, true_features = create_data_loader(config, true_features)
+    # Load the full model state dict
+    model_artifact = next(art for art in specific_run.logged_artifacts() if art.type == 'model')
+    artifact_dir = model_artifact.download()
+    model_path = os.path.join(artifact_dir, f"{specific_run.name}_epoch_1.pth")
+    full_state_dict = torch.load(model_path, map_location=device)
+
+    # Create a single model with both encoders
+    model = SparseAutoencoder(config['hyperparameters'])
+    model.load_state_dict(full_state_dict)
+    model = model.to(device).to(torch.float32)
+
+    data_loader, _ = create_data_loader(config, true_features)
 
     try:
-        results = visualize_sae_features_3d([model], true_features, data_loader, device, range(num_saes))
+        results = visualize_sae_features_3d([model], true_features, data_loader, device, range(len(model.encoders)))
         wandb.log({"experiment_completed": True})
         return {
             "gt_max_sim": results[0],
             "max_sim_across_saes": results[1],
-            "reconstruction_importance": results[2]
+            "activation_probabilities": results[2]
         }
     except Exception as e:
         print(f"An error occurred: {str(e)}")
         print(f"Traceback: {traceback.format_exc()}")
         return None
+

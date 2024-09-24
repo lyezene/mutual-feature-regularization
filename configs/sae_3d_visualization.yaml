@@ -1,4 +1,5 @@
 experiment: sae_3d_visualization
+run_id: vj8izs70
 
 hyperparameters:
   num_saes: 2
@@ -11,7 +12,7 @@ hyperparameters:
   weight_decay: 0.01
 
 visualization:
-  plot_title: "SAE Feature 3D Visualization"
+  plot_title: ""
   x_label: "Max Cosine Similarity with True Features"
   y_label: "Max Cosine Similarity between SAEs"
   z_label: "Reconstruction Importance"

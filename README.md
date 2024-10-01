@@ -1,12 +1,20 @@
-# Mutual Regularization for Sparse Autoencoders
-
-This repository contains an implementation of 'mutual regularization' (MR) for sparse autoencoders (SAEs). MR consists of training multiple SAEs in parallel and penalizing for low cosine similarity in their decoder weights, hidden states or reconstructions in training. The central motivation is to encourage the SAEs to learn a common representation. I expect this to improve the quality of the SAEs because features more likely to be discovered by many SAEs may be more likely to be features of the input than features found by a single SAE.
-
-This repository is currently messy, and only partially supports MR and various benchmarks to test it (these benchmarks may later be spun out into an SAE benchmarking package). The supported experiments are detailed below. Basic configurations are provided for each experiment.
-
-## Recovering Known Ground Truth Features
+## Training SAEs on Synthetic Data
 
 In this experiment, SAEs are trained on synthetic data with known ground truth features designed to mimic feature superposition in neural networks. This is a convenient testbed for measuring how well an SAE is approximating ground truth features, and is ideal for quickly testing MR implementations. This experiment can be run with the command:
 ```
-python main.py --config configs/synthetic_config.yaml
+python main.py --config configs/synthetic.yaml
+```
+
+## Training SAEs on GPT-2 Small MLP Activations
+
+This experiment trains SAEs on activations from the MLP layers (by default just layer 0) of GPT-2 Small.
+```
+python main.py --config configs/gpt2.yaml
+```
+
+## Training SAEs to Denoise EEG Data
+
+This experiment trains SAEs on EEG data from the TUH EEG corpus. It also handles downloading and formatting the data for SAE training.
+```
+python main.py --config configs/eeg.yaml
 ```
